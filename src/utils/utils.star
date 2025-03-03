@@ -30,3 +30,7 @@ def get_eth_service_names(all_participants):
     ].el_context.service_name
 
     return (cl_service_name, el_service_name)
+
+
+def new_template_and_data(template, template_data_json):
+    return struct(template=template, data=template_data_json)

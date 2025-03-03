@@ -27,8 +27,21 @@ def generate_operator_keys(plan):
         ),
     )
 
-    public_key = plan.exec(service_name=SSV_CLI_SERVICE_NAME, recipe=ExecRecipe(command=["/bin/sh", "-c", "cat /tmp/ssv_keys | grep 'generated public key' | awk -F'\"' '{print $(NF-1)}' | tr -d ' \n\r'"]))["output"]
-    private_key = plan.exec(service_name=SSV_CLI_SERVICE_NAME, recipe=ExecRecipe(command=["/bin/sh", "-c", "cat /tmp/ssv_keys | grep 'generated private key' | awk -F'\"' '{print $(NF-1)}' | tr -d ' \n\r'"]))["output"]
+    public_key = plan.exec(
+        service_name=SSV_CLI_SERVICE_NAME,
+        recipe=ExecRecipe(command=[
+            "/bin/sh", "-c",
+            "cat /tmp/ssv_keys | grep 'generated public key' | awk -F'\"' '{print $(NF-1)}' | tr -d ' \n\r'"
+        ])
+    )["output"]
+
+    private_key = plan.exec(
+        service_name=SSV_CLI_SERVICE_NAME,
+        recipe=ExecRecipe(command=[
+            "/bin/sh", "-c",
+            "cat /tmp/ssv_keys | grep 'generated private key' | awk -F'\"' '{print $(NF-1)}' | tr -d ' \n\r'"
+        ])
+    )["output"]
 
     plan.print("generated operator keys")
     plan.print(public_key)
@@ -61,4 +74,3 @@ def generate_config(plan, consensus_client, execution_client, contract, operator
     return struct(
         config=config,
     )
-

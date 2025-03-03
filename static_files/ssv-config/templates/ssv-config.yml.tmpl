@@ -1,0 +1,19 @@
+global:
+  LogLevel: "{{ .LogLevel }}"
+db:
+  Path: "{{ .DBPath }}"
+eth2:
+  BeaconNodeAddr: "{{ .BeaconNodeAddr }}"
+eth1:
+  ETH1Addr: "{{ .ETH1Addr }}"
+p2p:
+  Discovery: "mdns"
+ssv:
+  CustomNetwork:
+    Name: "{{ .CustomNetworkName }}"
+    GenesisDomainType: "{{ .GenesisDomainType }}"
+    AlanDomainType: "{{ .AlanDomainType }}"
+    RegistrySyncOffset: "{{ .RegistrySyncOffset }}"
+    RegistryContractAddr: "{{ .RegistryContractAddr }}"
+OperatorPrivateKey: {{ .OperatorPrivateKey }}
+LocalEventsPath: "{{ .LocalEventsPath }}"
