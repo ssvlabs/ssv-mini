@@ -40,7 +40,7 @@ def generate_operator_keys(plan):
     )
 
 
-def generate_config(plan, consensus_client, execution_client, operator_private_key):
+def generate_config(plan, consensus_client, execution_client, contract, operator_private_key):
     plan.print("generating config")
 
     plan.exec(
@@ -48,7 +48,7 @@ def generate_config(plan, consensus_client, execution_client, operator_private_k
         recipe=ExecRecipe(
             command=[
                 "/bin/sh", "-c",
-                "/go/bin/ssvnode generate-config --output-path=/tmp/ssv_config --consensus-client={} --execution-client={} --operator-private-key={}".format(consensus_client, execution_client, operator_private_key)
+                "/go/bin/ssvnode generate-config --output-path=/tmp/ssv_config --consensus-client={} --execution-client={} --ssv-registry-contract-addr={} --ssv-registry-sync-offset=1 --operator-private-key={}".format(consensus_client, execution_client, contract, operator_private_key)
             ]
         ),
     )

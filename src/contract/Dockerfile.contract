@@ -1,3 +1,4 @@
+
 # Use an official Node.js runtime as a parent image
 FROM node:22-alpine
 
@@ -13,13 +14,18 @@ RUN apk add make g++ py3-pip
 RUN npm install -g ts-node
 
 # Clone the specific branch of the Hardhat project from the Git repository
-RUN git clone --branch feat/machine-readable https://github.com/ssvlabs/ssv-network .
+
+RUN git clone --branch feat/machine-readable https://github.com/ssvlabs/ssv-network . && \
+    git fetch && \
+    git reset --hard origin/feat/machine-readable
 
 # Install project dependencies
 RUN npm install
 
 # Install Hardhat globally
 RUN npm install -g hardhat
+
+RUN npm install --save-dev ssv-scanner 
 
 RUN npm run build
 

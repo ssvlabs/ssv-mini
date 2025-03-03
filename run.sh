@@ -1,1 +1,1 @@
-kurtosis run --enclave my-testnet . "$(cat ./network_params.yaml)"
+kurtosis run --enclave my-testnet . --args-file ./network_params.yaml

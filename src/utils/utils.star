@@ -20,3 +20,13 @@ def get_eth_urls(all_participants):
     cl_uri = "http://{0}:{1}".format(cl_ip_addr, cl_http_port_num)
 
     return (cl_uri, el_rpc_uri, el_ws_uri)
+
+def get_eth_service_names(all_participants):
+    cl_service_name = all_participants[
+        0
+    ].cl_context.beacon_service_name
+    el_service_name = all_participants[
+        0
+    ].el_context.service_name
+
+    return (cl_service_name, el_service_name)
