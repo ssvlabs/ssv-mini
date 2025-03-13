@@ -12,8 +12,6 @@ OWNER_ADDRESS ="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
 
 VALIDATOR_KEYSTORE_SERVICE = "validator-key-generation-cl-validator-keystore"
 
-ENR = "enr:-MG4QMN2d7QkwZzDffoE1dEiNHpHkr6SExCaWjQ05HsqKM5_CLUDP88DzmxxhY08EWgSfSP3eol02JSFi67lack3RUABimRvbWFpbnR5cGWEAAAAOIJpZIJ2NIJpcISsEAAXhHF1aWOCI42Jc2VjcDI1NmsxoQOEayLkUBM449UKcgRFlu6mEdR98FN5yCgojHoE_K3zxINzc3YBh3N1Ym5ldHOQAAAAAAAAAAAAAAAAAAAAAIN0Y3CCI4yDdWRwgiOM"
-
 ANCHOR_KEYSPLIT_SERVICE = "anchor-keysplit"
 ANCHOR_CLI_SERVICE_NAME = "anchor"
 ANCHOR_IMAGE = "anchor/anchor-unstable"
@@ -24,6 +22,8 @@ FOUNDRY_IMAGE = ImageBuildSpec(
     build_context_dir="./",
     build_file="Dockerfile.contract",
 )
+
+ENR_CLI_IMAGE = "zholme/enr-cli:latest"
 
 
 

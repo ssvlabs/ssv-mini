@@ -33,7 +33,7 @@ def generate_operator_keys(plan, index):
     result = plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "./anchor keygen > /dev/null && cat keys.json"],
+            command=["/bin/sh", "-c", "./anchor keygen --force > /dev/null && cat keys.json"],
             extract = {
                 "public": "fromjson | .public",
                 "private": "fromjson | .private",

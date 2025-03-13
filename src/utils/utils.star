@@ -1,3 +1,5 @@
+constants = import_module("constants.star")
+
 def get_eth_urls(all_participants):
     el_ip_addr = all_participants[
         0
@@ -36,3 +38,44 @@ def anchor_testnet_artifact(plan):
         ]
     )
     return config
+
+def generate_enr(plan, container_ip):
+    # start the service with enr-cli
+    command_arr = [
+        "enr-cli",
+        "build",
+        "-j", "network/key",
+        "-i", container_ip,
+        "-s", "1",
+        "-p", "9100",
+        "-u", "9100"
+    ]
+
+    plan.add_service(
+        name = "enr-cli",
+        config = ServiceConfig(
+            image = constants.ENR_CLI_IMAGE,
+            entrypoint=["tail", "-f", "/dev/null"],
+            files = {
+                "/usr/local/bin/network": plan.upload_files("../testnet-configs/anchor-config/key"),
+            }
+        )
+    )
+
+    result = plan.exec(
+        service_name = "enr-cli",
+        recipe = ExecRecipe(
+            command=["/bin/sh", "-c", " ".join(command_arr)],
+            extract = {
+                "enr": "split(\"\\n\") | map(select(startswith(\"Built ENR: \"))) | .[0] | sub(\"Built ENR: \"; \"\")"
+            }
+        )
+    )
+
+    return result["extract.enr"]
+
+
+
+
+
+
