@@ -75,6 +75,17 @@ def generate_enr(plan, container_ip):
     return result["extract.enr"]
 
 
+def read_enr_from_file(plan, service_name):
+    # Execute a command to read the ENR file on the container
+    result = plan.exec(
+        service_name = service_name,
+        recipe = ExecRecipe(
+            command = ["/bin/sh", "-c", "cat /usr/local/bin/data/network/enr.dat"]
+        )
+    )
+    
+    # Return the ENR content
+    return result["output"]
 
 
 
