@@ -16,10 +16,16 @@ git checkout origin/unstable
 docker build -f Dockerfile.devnet -t anchor/anchor-unstable . 
 ```
 
+
 ### Running 
 
 ```bash
 ./run.sh
+```
+
+View the logs of the nodes
+```
+kurtosis service logs -f my-testnet {service-name}
 ```
 
 ### Starting Over
