@@ -21,7 +21,14 @@ def split_keys(plan, keystores, operator_data_artifact, network_address, owner_a
     plan.exec(
         service_name=constants.ANCHOR_KEYSPLIT_SERVICE,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "chmod u+x keysplit/keysplit.sh && cd keysplit && ./keysplit.sh"]
+            command=[
+                "/bin/sh", "-c",
+                """
+                apt-get update && apt-get install -y jq && \
+                chmod u+x /usr/local/bin/keysplit/keysplit.sh && \
+                cd /usr/local/bin/keysplit && ./keysplit.sh
+                """
+            ]
         )
     )
 
