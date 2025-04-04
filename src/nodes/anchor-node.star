@@ -2,13 +2,13 @@ constants = import_module("../utils/constants.star")
 utils = import_module("../utils/utils.star")
 
 # Start an anchor node
-def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pem, config):
+def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
     IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
     enr = ""
     
     # Start the first node
     name = "anchor-node-0"
-    files = get_anchor_files(plan, 0, key_pem, config)
+    files = get_anchor_files(plan, 0, key_pems[0], config)
     command_arr = [
         "node", "--testnet-dir", "testnet", "--beacon-nodes", cl_url,
         "--execution-rpc", el_rpc, "--execution-ws", el_ws, "--datadir", "data",
@@ -44,7 +44,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pem, config):
     # Start the rest of the nodes with the ENR from the first node
     for index in range(1, num_nodes):
         name = "anchor-node-{}".format(index)
-        files = get_anchor_files(plan, index, key_pem, config)
+        files = get_anchor_files(plan, index, key_pems[index], config)
 
         # Create the service with the placeholder in the command
         plan.add_service(
