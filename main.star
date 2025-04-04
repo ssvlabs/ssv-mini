@@ -65,7 +65,7 @@ def run(plan, args):
 
     # start up all of the anchor nodes
     config = utils.anchor_testnet_artifact(plan)
-    anchor_node.start(plan, constants.ANCHOR_NODE_COUNT, cl_url, el_rpc, el_ws, pem_artifacts[node_index], config)
+    anchor_node.start(plan, constants.ANCHOR_NODE_COUNT, cl_url, el_rpc, el_ws, pem_artifacts, config)
 
     node_index += constants.ANCHOR_NODE_COUNT
 
