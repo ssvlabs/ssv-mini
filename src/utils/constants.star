@@ -22,10 +22,3 @@ FOUNDRY_IMAGE = ImageBuildSpec(
     build_context_dir="./",
     build_file="Dockerfile.contract",
 )
-
-ENR_CLI_IMAGE = "zholme/enr-cli:latest"
-
-
-
-
-
