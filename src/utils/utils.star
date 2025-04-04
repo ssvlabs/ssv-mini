@@ -50,7 +50,3 @@ def read_enr_from_file(plan, service_name):
     
     # Return the ENR content
     return result["output"]
-
-
-
-
