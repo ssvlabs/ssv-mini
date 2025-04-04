@@ -1,3 +1,5 @@
+constants = import_module("constants.star")
+
 def get_eth_urls(all_participants):
     el_ip_addr = all_participants[
         0
@@ -36,3 +38,15 @@ def anchor_testnet_artifact(plan):
         ]
     )
     return config
+
+def read_enr_from_file(plan, service_name):
+    # Execute a command to read the ENR file on the container
+    result = plan.exec(
+        service_name = service_name,
+        recipe = ExecRecipe(
+            command = ["/bin/sh", "-c", "cat /usr/local/bin/data/network/enr.dat"]
+        )
+    )
+    
+    # Return the ENR content
+    return result["output"]

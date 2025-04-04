@@ -13,13 +13,19 @@ docker build -t ssv-node:custom-config .
 ```bash
 git clone https://github.com/sigp/anchor.git
 git checkout origin/unstable
-docker build -t anchor/anchor-unstable . 
+docker build -f Dockerfile.devnet -t anchor/anchor-unstable . 
 ```
+
 
 ### Running 
 
 ```bash
 ./run.sh
+```
+
+View the logs of the nodes
+```
+kurtosis service logs -f my-testnet {service-name}
 ```
 
 ### Starting Over
