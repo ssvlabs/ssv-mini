@@ -34,5 +34,6 @@ network_params:
   network_id: "3151908"
   deneb_fork_epoch: 0
   electra_fork_epoch: 999999
+  fulu_fork_epoch: 100000001
   preregistered_validator_count: 74
   preset: minimal
