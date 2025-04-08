@@ -58,6 +58,8 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
             )
         )
 
+    return enr
+
 def get_anchor_files(plan, index, key_pem, config):
     if index == 0:
         # this is the "main" bootnode

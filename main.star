@@ -65,13 +65,13 @@ def run(plan, args):
 
     # start up all of the anchor nodes
     config = utils.anchor_testnet_artifact(plan)
-    anchor_node.start(plan, constants.ANCHOR_NODE_COUNT, cl_url, el_rpc, el_ws, pem_artifacts, config)
+    enr = anchor_node.start(plan, constants.ANCHOR_NODE_COUNT, cl_url, el_rpc, el_ws, pem_artifacts, config)
 
     node_index += constants.ANCHOR_NODE_COUNT
 
     # Start up the ssv nodes
     for _ in range(0, constants.SSV_NODE_COUNT):
-        config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index])
+        config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr)
         node_service = ssv_node.start(plan, node_index, config)
         node_index += 1
 

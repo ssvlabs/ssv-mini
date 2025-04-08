@@ -32,6 +32,7 @@ def generate_config(
         consensus_client,
         execution_client,
         operator_private_key,
+        enr
 ):
 
     ssv_config_template = read_file(
@@ -60,6 +61,7 @@ def generate_config(
         RegistrySyncOffset=registry_sync_offset,
         RegistryContractAddr=registry_contract_addr,
         OperatorPrivateKey=operator_private_key,
+        ENR=enr
     )
 
     # Render the template into a file artifact
