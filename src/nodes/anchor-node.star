@@ -10,7 +10,8 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
     name = "anchor-node-0"
     files = get_anchor_files(plan, 0, key_pems[0], config)
     command_arr = [
-        "node", "--testnet-dir", "testnet", "--beacon-nodes", cl_url,
+        "node", "--metrics", "--metrics-address", "0.0.0.0",
+        "--testnet-dir", "testnet", "--beacon-nodes", cl_url,
         "--execution-rpc", el_rpc, "--execution-ws", el_ws, "--datadir", "data",
         "--enr-address", IP_PLACEHOLDER, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
         "--enr-quic-port", "9101", "--port", "9100", "--discovery-port", "9100", "--quic-port", "9101"
