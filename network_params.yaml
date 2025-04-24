@@ -8,7 +8,6 @@ participants:
 
 additional_services:
   - dora # Helps to see validators are working
-  - prometheus_grafana
 
 # Parameters if MEV is used
 mev_params:

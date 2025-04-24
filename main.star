@@ -11,6 +11,7 @@ operator_keygen = import_module("./src/generators/operator-keygen.star")
 validator_keygen = import_module("./src/generators/validator-keygen.star")
 keysplit = import_module("./src/generators/keysplit.star")
 constants = import_module("./src/utils/constants.star")
+prometheus_pkg = import_module("github.com/kurtosis-tech/prometheus-package/main.star")
 
 def run(plan, args):
 
@@ -33,6 +34,7 @@ def run(plan, args):
         non_ssv_validators, 
         total_validators - non_ssv_validators
     )
+
 
     # Generate public/private keypair for every operator we are going to deploy
     operator_keygen.start_cli(plan, keystore_files)
@@ -76,4 +78,24 @@ def run(plan, args):
         config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr)
         node_service = ssv_node.start(plan, node_index, config)
         node_index += 1
+
+    extra_jobs = [anchor_metrics_job(i) for i in range(constants.ANCHOR_NODE_COUNT)]
+    prom_url = prometheus_pkg.run(
+        plan,
+        metrics_jobs           = extra_jobs,
+        name                   = "anchor-prom",
+    )
     
+
+def anchor_metrics_job(index):
+    svc_name = "anchor-node-{}".format(index)
+    with_port = "anchor-node-{0}:{1}".format(index, 5164)
+
+    return {
+        "Name":        svc_name,
+        "Endpoint":    with_port,
+        "MetricsPath": "/metrics",
+        "Labels":      {"client_type": "anchor"},
+        "ScrapeInterval": "15s",
+    }
+
