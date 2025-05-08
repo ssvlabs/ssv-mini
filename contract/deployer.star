@@ -1,6 +1,5 @@
 constants = import_module("../utils/constants.star")
 
-
 # deploy all of the contracts
 def deploy(plan, el, genesis_constants):
     env_vars = get_env_vars(el, genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key)
@@ -40,4 +39,3 @@ def get_env_vars(eth1_url, private_key):
         "VALIDATORS_PER_OPERATOR_LIMIT": "500",
         "OPERATOR_KEYS_FILE": "/app/operator_keys.json"
     }
-

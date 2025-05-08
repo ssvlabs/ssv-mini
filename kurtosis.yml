@@ -1,4 +1,2 @@
 name: github.com/ssvlabs/localnet
-description: |-
-  # wip
-replace: {}
+description: A service for running a local Ethereum testnet with an SSV Node and monitoring tools.
