@@ -1,30 +1,9 @@
-utils = import_module("../utils/utils.star")
+utils = import_module("../../utils/utils.star")
 shared_utils = import_module("github.com/ethpandaops/ethereum-package/src/shared_utils/shared_utils.star")
-constants = import_module("../utils/constants.star")
-
-SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
-
-STATIC_FILES_DIRPATH = "/static_files"
-
-SSV_CONFIG_DIRPATH = "/ssv-config"
-
-SSV_CONFIG_TEMPLATE_FILEPATH = (
-        STATIC_FILES_DIRPATH
-        + SSV_CONFIG_DIRPATH
-        + "/templates/ssv-config.yml.tmpl"
-)
+constants = import_module("../../utils/constants.star")
 
 SSV_API_PORT = 9232
-SSV_API_PORT_ID = "http"
-
-
-USED_PORTS = {
-    SSV_API_PORT_ID: shared_utils.new_port_spec(
-        SSV_API_PORT,
-        shared_utils.TCP_PROTOCOL,
-        shared_utils.HTTP_APPLICATION_PROTOCOL,
-    )
-}
+SSV_API_PORT_NAME = "api"
 
 def generate_config(
         plan,
@@ -32,12 +11,11 @@ def generate_config(
         consensus_client,
         execution_client,
         operator_private_key,
-        enr
+        enr,
+        is_exporter,
 ):
 
-    ssv_config_template = read_file(
-        SSV_CONFIG_TEMPLATE_FILEPATH
-    )
+    ssv_config_template = read_file("config.yml.tmpl")
 
     db_path = "./data/db/{}/".format(index)
     file_name = "ssv-config-{}.yaml".format(index)
@@ -68,8 +46,13 @@ def generate_config(
         RegistryContractAddr=registry_contract_addr,
         OperatorPrivateKey=operator_private_key,
         Discovery=discovery,
-        ENR=enr
+        ENR=enr,
+        Exporter=is_exporter,
+        SSVAPIPort=SSV_API_PORT
     )
+
+    plan.print(
+        "generating SSV node config artifact with data: " + json.indent(json.encode(data)))
 
     # Render the template into a file artifact
     rendered_artifact = plan.render_templates(
@@ -81,9 +64,10 @@ def generate_config(
 
     return rendered_artifact
 
-def start(plan, index, config_artifact):
-    service_name = "ssv-node-{}".format(index)
-    image = "ssv-node:custom-config"  # Matches the new Docker image name
+def start(plan, index, config_artifact, is_exporter):
+    SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
+    service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
+    image = "node/ssv"  # Matches the new Docker image name
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
     # Minimal service configuration
@@ -94,6 +78,13 @@ def start(plan, index, config_artifact):
             "BUILD_PATH=/go/bin/ssvnode",
             "start-node",
         ],
+        ports={
+            SSV_API_PORT_NAME: PortSpec(
+                number=SSV_API_PORT,
+                transport_protocol="TCP",
+                application_protocol="http",
+            )
+        },
         cmd=[],
         env_vars={
             "CONFIG_PATH": config_path,  # Pass the path as an environment variable
@@ -104,7 +95,4 @@ def start(plan, index, config_artifact):
     )
 
     # Add the service
-    plan.add_service(service_name, service_config)
-
-    # Return the service object
-    return plan.get_service(service_name)
+    return plan.add_service(service_name, service_config)

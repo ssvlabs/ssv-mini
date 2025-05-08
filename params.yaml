@@ -1,0 +1,53 @@
+# https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
+network:
+  participants:
+  - el_type: geth
+    el_image: ethereum/client-go:v1.15.10
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v7.0.0
+    validator_count: 32
+    count: 2
+
+  additional_services:
+    - dora # Helps to see validators are working
+    - prometheus_grafana
+
+  mev_params:
+    mev_relay_image: flashbots/mev-boost-relay
+    mev_builder_image: ethpandaops/flashbots-builder:main
+    mev_builder_cl_image: sigp/lighthouse:v7.0.0
+    mev_boost_image: flashbots/mev-boost
+    mev_boost_args: []
+    mev_relay_api_extra_args: []
+    mev_relay_housekeeper_extra_args: []
+    mev_relay_website_extra_args: []
+    mev_builder_extra_args: []
+    mev_builder_prometheus_config:
+      scrape_interval: 15s
+      labels: {}
+    mev_flood_image: flashbots/mev-flood
+    mev_flood_extra_args: []
+    mev_flood_seconds_per_bundle: 15
+    custom_flood_params:
+      interval_between_transactions: 1
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 100000000
+    preregistered_validator_count: 74
+    seconds_per_slot: 12
+    max_per_epoch_activation_churn_limit: 8
+    # NOTE: changes the number of slots in the epoch and potentially some other network settings
+    # preset: minimal
+
+monitor:
+  enabled: true
+
+nodes:
+  ssv:
+    count: 4
+  anchor:
+    count: 0
+  

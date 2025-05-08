@@ -27,14 +27,15 @@ def new_template_and_data(template, template_data_json):
 
 
 def anchor_testnet_artifact(plan):
+    base_path = "../nodes/anchor/config"
     config = Directory(
         artifact_names = [
-            plan.upload_files("../testnet-configs/anchor-config/config.yaml"),
-            plan.upload_files("../testnet-configs/anchor-config/deposit_contract_block.txt"),
-            plan.upload_files("../testnet-configs/anchor-config/ssv_boot_enr.yaml"),
-            plan.upload_files("../testnet-configs/anchor-config/ssv_contract_address.txt"),
-            plan.upload_files("../testnet-configs/anchor-config/ssv_contract_block.txt"),
-            plan.upload_files("../testnet-configs/anchor-config/ssv_domain_type.txt"),
+            plan.upload_files(base_path + "/config.yaml"),
+            plan.upload_files(base_path + "/deposit_contract_block.txt"),
+            plan.upload_files(base_path + "/ssv_boot_enr.yaml"),
+            plan.upload_files(base_path + "/ssv_contract_address.txt"),
+            plan.upload_files(base_path + "/ssv_contract_block.txt"),
+            plan.upload_files(base_path + "/ssv_domain_type.txt"),
         ]
     )
     return config
