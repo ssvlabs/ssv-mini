@@ -1,5 +1,5 @@
-constants = import_module("../utils/constants.star")
-utils = import_module("../utils/utils.star")
+constants = import_module("../../utils/constants.star")
+utils = import_module("../../utils/utils.star")
 
 # Start an anchor node
 def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
@@ -65,7 +65,7 @@ def get_anchor_files(plan, index, key_pem, config):
         # this is the "main" bootnode
         return {
             "/usr/local/bin/data": key_pem,
-            "/usr/local/bin/data/network": plan.upload_files("../testnet-configs/anchor-config/key"),
+            "/usr/local/bin/data/network": plan.upload_files("./config/key"),
             "/usr/local/bin/testnet": config
         }
     else:

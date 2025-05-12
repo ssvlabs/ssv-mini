@@ -67,7 +67,3 @@ def register_validators(plan, keyshare_artifact, network_address, token_address,
             command=["/bin/sh", "-c", "chmod u+x script/register/register-validators.sh && ./script/register/register-validators.sh "]
         )
     )
-
-
-
-
