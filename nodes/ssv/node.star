@@ -26,12 +26,12 @@ def generate_config(
         DBPath="./data/db/{}/".format(index),
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
-        CustomNetworkName=constants.NETWORK_NAME,
-        DomainType="0x00000403", #[0x00, 0x00, 0x04, 0x03]
+        Network=constants.NETWORK_NAME, #if not set - default to "mainnet"
+        DomainType="0x00000403",
         RegistrySyncOffset="1",
         RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
         OperatorPrivateKey=operator_private_key,
-        DiscoveryProtocolID = "0x737376647635", #ssvdv5
+        DiscoveryProtocolID = "0x737376647635", # ssvdv5
         Discovery=discovery,
         ENR=enr,
         Exporter=is_exporter,

@@ -11,8 +11,8 @@ p2p:
   Bootnodes: "{{ .ENR }}"
 
 ssv:
+  Network: "{{ .Network }}"
   CustomNetwork:
-    Name: "{{ .CustomNetworkName }}"
     DomainType: "{{ .DomainType }}"
     RegistrySyncOffset: "{{ .RegistrySyncOffset }}"
     RegistryContractAddr: "{{ .RegistryContractAddr }}"

@@ -32,6 +32,7 @@ network:
       interval_between_transactions: 1
 
   network_params:
+    # this is 'kurtosis' network ID, which is a default network. With this configuration CL /spec endpoint will return CONFIG_NAME=testnet
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
