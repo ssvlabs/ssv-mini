@@ -60,7 +60,7 @@ def shared_envs(
     ssv_exporter_url,
     cl_url):
     return {
-        "NETWORK": constants.NETWORK_NAME,
+        "NETWORK": "other",
         "BEACON_ADDR": cl_url,
         "DEFAULT_POOL": "ssv",
         "POOLS": '[{{"id":1,"name":"ssv","indices":[],"endpoint":"{}/v1/validators"}}]'.format(ssv_exporter_url),
