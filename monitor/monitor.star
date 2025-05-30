@@ -1,3 +1,4 @@
+constants = import_module("../utils/constants.star")
 postgres = import_module("postgres.star")
 redis = import_module("redis.star")
 
@@ -13,6 +14,10 @@ def start(plan, ssv_exporter_url, cl_url):
     plan.print("Redis started. Starting realtime monitor")
     
     env_vars = shared_envs(postgres_service_name, postgres_port, redis_service_name, redis_port, ssv_exporter_url, cl_url)
+
+    plan.print(
+        "starting monitor services with environment variables: " + json.indent(json.encode(env_vars)))
+
     plan.add_service(
         name = "monitor-daemon",
         config = ServiceConfig( 
@@ -55,7 +60,7 @@ def shared_envs(
     ssv_exporter_url,
     cl_url):
     return {
-        "NETWORK": "mainnet", #TODO: use different network
+        "NETWORK": constants.NETWORK_NAME,
         "BEACON_ADDR": cl_url,
         "DEFAULT_POOL": "ssv",
         "POOLS": '[{{"id":1,"name":"ssv","indices":[],"endpoint":"{}/v1/validators"}}]'.format(ssv_exporter_url),

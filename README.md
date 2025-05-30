@@ -30,7 +30,7 @@ make run
 
 View the logs of the nodes
 ```
-kurtosis service logs -f my-testnet {service-name}
+kurtosis service logs -f localnet {service-name}
 ```
 
 ### Starting Over

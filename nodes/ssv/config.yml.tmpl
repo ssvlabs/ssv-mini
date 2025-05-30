@@ -13,10 +13,10 @@ p2p:
 ssv:
   CustomNetwork:
     Name: "{{ .CustomNetworkName }}"
-    GenesisDomainType: "{{ .GenesisDomainType }}"
-    AlanDomainType: "{{ .AlanDomainType }}"
+    DomainType: "{{ .DomainType }}"
     RegistrySyncOffset: "{{ .RegistrySyncOffset }}"
     RegistryContractAddr: "{{ .RegistryContractAddr }}"
+    DiscoveryProtocolID: "{{ .DiscoveryProtocolID }}"
 OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
 Exporter: "{{ .Exporter }}"

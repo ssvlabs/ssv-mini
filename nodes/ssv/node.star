@@ -14,19 +14,6 @@ def generate_config(
         enr,
         is_exporter,
 ):
-
-    ssv_config_template = read_file("config.yml.tmpl")
-
-    db_path = "./data/db/{}/".format(index)
-    file_name = "ssv-config-{}.yaml".format(index)
-    log_level = "debug"
-
-    custom_network_name = "local-network"
-    genesis_domain_type = "0x00000501"
-    alan_domain_type = "0x00000502"
-    registry_sync_offset = "1"
-    registry_contract_addr = constants.SSV_NETWORK_PROXY_CONTRACT 
-
     discovery = ""
     if enr == "":
         discovery = "mdns"
@@ -35,16 +22,16 @@ def generate_config(
 
     # Prepare data for the template
     data = struct(
-        LogLevel=log_level,
-        DBPath=db_path,
+        LogLevel="debug",
+        DBPath="./data/db/{}/".format(index),
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
-        CustomNetworkName=custom_network_name,
-        GenesisDomainType=genesis_domain_type,
-        AlanDomainType=alan_domain_type,
-        RegistrySyncOffset=registry_sync_offset,
-        RegistryContractAddr=registry_contract_addr,
+        CustomNetworkName=constants.NETWORK_NAME,
+        DomainType="0x00000403", #[0x00, 0x00, 0x04, 0x03]
+        RegistrySyncOffset="1",
+        RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
         OperatorPrivateKey=operator_private_key,
+        DiscoveryProtocolID = "0x737376647635", #ssvdv5
         Discovery=discovery,
         ENR=enr,
         Exporter=is_exporter,
@@ -53,6 +40,9 @@ def generate_config(
 
     plan.print(
         "generating SSV node config artifact with data: " + json.indent(json.encode(data)))
+
+    ssv_config_template = read_file("config.yml.tmpl")
+    file_name = "ssv-config-{}.yaml".format(index)
 
     # Render the template into a file artifact
     rendered_artifact = plan.render_templates(
