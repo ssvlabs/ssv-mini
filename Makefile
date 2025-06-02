@@ -7,7 +7,7 @@ default: run
 
 .PHONY: run
 run:
-	kurtosis run --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
+	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
 
 .PHONY: reset
 reset:

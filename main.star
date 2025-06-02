@@ -46,7 +46,7 @@ def run(plan, args):
         total_validators - non_ssv_validators
     )
 
-    # # Generate public/private keypair for every operator we are going to deploy
+    # Generate public/private keypair for every operator we are going to deploy
     operator_keygen.start_cli(plan, keystore_files)
     
     number_of_keys = ssv_node_count + anchor_node_count
@@ -54,10 +54,10 @@ def run(plan, args):
     plan.print("generating operator keys. Number of keys: " + str(number_of_keys))
     public_keys, private_keys, pem_artifacts = operator_keygen.generate_keys(plan, number_of_keys)
 
-    # # Once we have all of the keys, register each operator with the network
+    # Once we have all of the keys, register each operator with the network
     operator_data_artifact = interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
 
-    # # Split the ssv validator keys into into keyshares
+    # Split the ssv validator keys into into keyshares
     keyshare_artifact = keysplit.split_keys(
         plan, 
         keystore_files, 
@@ -68,7 +68,7 @@ def run(plan, args):
     )
 
     plan.print("registering network validators")
-    # # Register validators on the network
+    # Register validators on the network
     interactions.register_validators(
         plan,
         keyshare_artifact,
