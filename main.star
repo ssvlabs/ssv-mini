@@ -12,8 +12,16 @@ validator_keygen = import_module("./generators/validator-keygen.star")
 keysplit = import_module("./generators/keysplit.star")
 constants = import_module("./utils/constants.star")
 monitor = import_module("./monitor/monitor.star")
+cluster = import_module("./nodes/cluster.star")
 
 def run(plan, args):
+    plan.print("validating input")
+    ssv_node_count = args["nodes"]["ssv"]["count"]
+    anchor_node_count = args["nodes"]["anchor"]["count"]
+
+    if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
+        fail("invalid cluster size: ", str(ssv_node_count + anchor_node_count))
+
     plan.print("launching blockchain network")
     network_args = args["network"]
     ethereum_network = ethereum_package.run(plan, network_args)
@@ -40,9 +48,6 @@ def run(plan, args):
 
     # # Generate public/private keypair for every operator we are going to deploy
     operator_keygen.start_cli(plan, keystore_files)
-
-    ssv_node_count = args["nodes"]["ssv"]["count"]
-    anchor_node_count = args["nodes"]["anchor"]["count"]
     
     number_of_keys = ssv_node_count + anchor_node_count
     

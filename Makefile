@@ -18,6 +18,10 @@ reset:
 clean:
 	kurtosis clean -a
 
+.PHONY: show
+show:
+	kurtosis enclave inspect ${ENCLAVE_NAME}
+
 .PHONY: restart-ssv-nodes
 restart-ssv-nodes:
 	@echo "Updating SSV Node services. Count: $(SSV_NODE_COUNT) ..."
