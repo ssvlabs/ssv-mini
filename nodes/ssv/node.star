@@ -26,7 +26,7 @@ def generate_config(
         DBPath="./data/db/{}/".format(index),
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
-        Network=constants.NETWORK_NAME, #if not set - default to "mainnet"
+        Network="testnet", #if not set - default to "mainnet"
         DomainType="0x00000403",
         RegistrySyncOffset="1",
         RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
