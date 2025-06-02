@@ -27,7 +27,7 @@ def generate_config(
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
         Network="testnet", #if not set - default to "mainnet"
-        DomainType="0x00000403",
+        DomainType="0x00000000",
         RegistrySyncOffset="1",
         RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
         OperatorPrivateKey=operator_private_key,
