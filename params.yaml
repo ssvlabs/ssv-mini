@@ -45,7 +45,7 @@ network:
     # preset: minimal
 
 monitor:
-  enabled: true
+  enabled: false
 
 nodes:
   ssv:
