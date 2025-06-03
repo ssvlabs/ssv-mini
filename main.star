@@ -92,6 +92,7 @@ def run(plan, args):
 
     plan.print("deploying SSV nodes. Node count: " + str(ssv_node_count))
    
+    # NOTE: When more than one cluster is deployed, Monitor requires this URL to point to an SSV Node running in Exporter mode.
     ssv_node_api_url = None
 
     # Start up the ssv nodes
