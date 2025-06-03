@@ -8,7 +8,7 @@ Kurtosis devnet for running local SSV networks.
 
 ```bash
 git clone https://github.com/ssvlabs/ssv.git
-git checkout origin/override-spec-beacon-config
+git checkout %YOUR_BRANCH%
 docker build -t node/ssv . 
 ```
 ```bash
@@ -22,6 +22,8 @@ docker build -t monitor .
 ```
 
 
+## Interaction
+
 ### Running 
 
 ```bash
@@ -32,6 +34,24 @@ View the logs of the nodes
 ```
 kurtosis service logs -f localnet {service-name}
 ```
+
+### Viewing currently running services
+
+```bash
+make run
+```
+
+
+### Restarting SSV Nodes
+
+```bash
+make restart-ssv-nodes
+```
+
+**NOTE:** When making changes to SSV Nodes locally, you need to build a new Docker image: `docker build -t node/ssv .`. Then run the following command to redeploy the nodes to the local network: `make restart-ssv-nodes`
+
+```sh
+docker build -t node/ssv .
 
 ### Starting Over
 
