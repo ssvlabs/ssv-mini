@@ -13,6 +13,7 @@ keysplit = import_module("./generators/keysplit.star")
 constants = import_module("./utils/constants.star")
 monitor = import_module("./monitor/monitor.star")
 cluster = import_module("./nodes/cluster.star")
+bulk_spam = import_module("./tests/bulk-spam/bulk-spam.star")
 
 def run(plan, args):
     plan.print("validating input")
@@ -90,6 +91,9 @@ def run(plan, args):
 
     node_index += anchor_node_count
 
+    plan.print("waiting for consensus client to reach epoch 2 before deploying SSV nodes")
+    blocks.wait_until_consensus_client_reached_epoch(plan, "cl-1-lighthouse-geth", 2)
+
     plan.print("deploying SSV nodes. Node count: " + str(ssv_node_count))
    
     # NOTE: When more than one cluster is deployed, Monitor requires this URL to point to an SSV Node running in Exporter mode.
@@ -119,3 +123,28 @@ def run(plan, args):
 
         plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
         monitor.start(plan, ssv_node_api_url, cl_url)
+
+    # Wait for nodes to stabilize before running spam tests
+    if "custom" in args and "bulk_validator_spam" in args["custom"] and args["custom"]["bulk_validator_spam"]["enabled"]:
+        plan.print("⏳ Waiting for SSV nodes to stabilize before starting spam tests...")
+        
+        # Wait a bit for nodes to fully initialize
+        plan.exec(
+            service_name=constants.FOUNDRY_SERVICE_NAME,
+            recipe=ExecRecipe(
+                command=["/bin/sh", "-c", "sleep 30"]
+            )
+        )
+        
+        plan.print("🚀 SSV nodes are ready - executing bulk validator spam registration")
+        spam_config = args["custom"]["bulk_validator_spam"]
+        
+        bulk_spam.execute_bulk_spam(
+            plan, 
+            spam_config, 
+            operator_data_artifact, 
+            constants.SSV_NETWORK_PROXY_CONTRACT, 
+            constants.SSV_TOKEN_CONTRACT, 
+            el_rpc, 
+            genesis_constants
+        )

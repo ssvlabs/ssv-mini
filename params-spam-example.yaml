@@ -11,7 +11,9 @@ network:
     validator_count: 32
     count: 2
 
-  additional_services: []
+  additional_services:
+    - dora # Helps to see validators are working
+    - prometheus_grafana
 
   mev_params:
     mev_relay_image: flashbots/mev-boost-relay
