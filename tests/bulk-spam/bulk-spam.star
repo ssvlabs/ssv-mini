@@ -24,7 +24,7 @@ def execute_bulk_spam(plan, config, operator_data_artifact, network_address, tok
             command=["/bin/sh", "-c", "echo '🔢 Current block:' && cast block-number --rpc-url " + rpc]
         )
     )
-    plan.print("✅ Got start block number: " + str(start_block_result.code))
+    plan.print("✅ Got start block number: " + str(start_block_result["code"]))
     
     # Create fake validator data for testing
     plan.print("🔑 Creating fake validator keys for spam testing...")
@@ -80,7 +80,7 @@ def execute_bulk_spam(plan, config, operator_data_artifact, network_address, tok
             command=["/bin/sh", "-c", "echo '🔢 Final block:' && cast block-number --rpc-url " + rpc]
         )
     )
-    plan.print("✅ Got end block number: " + str(end_block_result.code))
+    plan.print("✅ Got end block number: " + str(end_block_result["code"]))
     
     # Create summary report
     total_validators = batch_count * validators_per_batch

@@ -48,7 +48,7 @@ network:
     max_per_epoch_activation_churn_limit: 8
 
 monitor:
-  enabled: false
+  enabled: true
 
 nodes:
   ssv:

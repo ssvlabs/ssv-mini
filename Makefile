@@ -1,5 +1,6 @@
 ENCLAVE_NAME=localnet
 PARAMS_FILE=params.yaml
+PARAMS_SPAM_FILE=params-spam.yaml
 SSV_NODE_COUNT?=4
 ENCLAVE_NAME?=localnet
 
@@ -8,6 +9,11 @@ default: run
 .PHONY: run
 run:
 	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
+
+
+.PHONY: run-registrations
+run-registrations:
+	kurtosis run --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_SPAM_FILE})"
 
 .PHONY: reset
 reset:
