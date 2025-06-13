@@ -3,7 +3,7 @@ Kurtosis devnet for running local SSV networks.
 
 ## Setup
 - Docker
-- Kurtosis
+- [Kurtosis](https://docs.kurtosis.com/install)
 - Build local client images
 
 ```bash
@@ -31,14 +31,14 @@ make run
 ```
 
 View the logs of the nodes
-```
+```bash
 kurtosis service logs -f localnet {service-name}
 ```
 
 ### Viewing currently running services
 
 ```bash
-make run
+make show
 ```
 
 

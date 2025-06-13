@@ -19,16 +19,23 @@ def run(plan, args):
     ssv_node_count = args["nodes"]["ssv"]["count"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
 
+    plan.print("validating configurations...")
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
         fail("invalid cluster size: ", str(ssv_node_count + anchor_node_count))
+
+    if ssv_node_count == 0 and args["observability"]["monitor"]["enabled"]:
+        fail("SSV Node count is equal to '0'. Monitor must not be enabled")
 
     plan.print("launching blockchain network")
     network_args = args["network"]
     ethereum_network = ethereum_package.run(plan, network_args)
+    
+    plan.print("network launched. Network output: " + json.indent(json.encode(ethereum_network)))
 
     plan.print("blockchain network is running. Waiting for it to be ready")
-    cl_url, el_rpc, el_ws = utils.get_eth_urls(ethereum_network.all_participants)
-    blocks.wait_until_node_reached_block(plan, "el-1-geth-lighthouse", 1)
+    cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
+    
+    blocks.wait_until_node_reached_block(plan, el_service_name, 1)
 
     plan.print("deploying SSV smart contracts")
     deployer.deploy(plan, el_rpc, genesis_constants)
@@ -94,6 +101,11 @@ def run(plan, args):
    
     # NOTE: When more than one cluster is deployed, Monitor requires this URL to point to an SSV Node running in Exporter mode.
     ssv_node_api_url = None
+
+    if ssv_node_count > 0:
+        # SSV Node requires a 'mature' Execution Layer (EL) client for the Event Syncer component to function properly. 
+        # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
+        blocks.wait_until_node_reached_block(plan, el_service_name, 16)
 
     # Start up the ssv nodes
     for _ in range(0, ssv_node_count):
