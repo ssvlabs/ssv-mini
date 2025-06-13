@@ -1,2 +1,2 @@
-name: github.com/ssvlabs/localnet
+name: github.com/ssvlabs/ssv-mini
 description: A service for running a local Ethereum network with an SSV Node and monitoring tools.
