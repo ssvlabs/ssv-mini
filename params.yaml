@@ -10,7 +10,6 @@ network:
 
   additional_services:
     - dora # Helps to see validators are working
-    - prometheus_grafana
 
   mev_params:
     mev_relay_image: flashbots/mev-boost-relay
