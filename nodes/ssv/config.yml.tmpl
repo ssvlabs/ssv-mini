@@ -21,4 +21,5 @@ ssv:
 OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
 Exporter: "{{ .Exporter }}"
-EnableTraces: true
+EnableTraces: {{ .EnableTraces }}
+MetricsAPIPort: {{ .MetricsAPIPort }}

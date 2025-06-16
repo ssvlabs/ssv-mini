@@ -5,6 +5,9 @@ constants = import_module("../../utils/constants.star")
 SSV_API_PORT = 9232
 SSV_API_PORT_NAME = "api"
 
+SSV_METRICS_PORT_NAME = "metrics"
+SSV_METRICS_PORT = 9240
+
 def generate_config(
         plan,
         index,
@@ -36,7 +39,9 @@ def generate_config(
         Discovery=discovery,
         ENR=enr,
         Exporter=is_exporter,
-        SSVAPIPort=SSV_API_PORT
+        SSVAPIPort=SSV_API_PORT,
+        MetricsAPIPort=SSV_METRICS_PORT,
+        EnableTraces=True
     )
 
     plan.print(
@@ -72,6 +77,11 @@ def start(plan, index, config_artifact, is_exporter):
         ports={
             SSV_API_PORT_NAME: PortSpec(
                 number=SSV_API_PORT,
+                transport_protocol="TCP",
+                application_protocol="http",
+            ),
+            SSV_METRICS_PORT_NAME: PortSpec(
+                number=SSV_METRICS_PORT,
                 transport_protocol="TCP",
                 application_protocol="http",
             )
