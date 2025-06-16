@@ -23,6 +23,7 @@ def generate_config(
     # Prepare data for the template
     data = struct(
         LogLevel="debug",
+        LogFormat="json",
         DBPath="./data/db/{}/".format(index),
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
@@ -77,12 +78,15 @@ def start(plan, index, config_artifact, is_exporter):
         },
         cmd=[],
         env_vars={
-            "CONFIG_PATH": config_path,  # Pass the path as an environment variable
+            "CONFIG_PATH": config_path,
+            # When traces are enabled, these two OTEL configurations are required
+            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc", 
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317"
         },
         files={
             SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,  # Map the configuration artifact to the desired path
         },
-    )
+)
 
     # Add the service
     return plan.add_service(service_name, service_config)

@@ -1,5 +1,6 @@
 global:
   LogLevel: "{{ .LogLevel }}"
+  LogFormat: "{{ .LogFormat }}"
 db:
   Path: "{{ .DBPath }}"
 eth2:
@@ -20,3 +21,4 @@ ssv:
 OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
 Exporter: "{{ .Exporter }}"
+EnableTraces: true
