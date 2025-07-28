@@ -29,26 +29,41 @@ def generate_keys(plan, num_keys):
 
 # Generate a new keypair 
 def generate_operator_keys(plan, index):
-    # Execute the anchor keygen command
-    result = plan.exec(
+    # Custom dir path passed to anchor keygen command with arg '--data-dir' based on latest anchor commits
+    key_dir = "/usr/local/bin/"
+    
+    # Execute the anchor keygen command (new output based on latest anchor commits: public_key.txt, unencrypted_private_key.txt)
+    plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "./anchor keygen --force > /dev/null && cat keys.json"],
-            extract = {
-                "public": "fromjson | .public",
-                "private": "fromjson | .private",
-            }
+            command=["/bin/sh", "-c", "./anchor keygen --data-dir " + key_dir + " --force"],
         ),
     )
 
+    public_key_result = plan.exec(
+        service_name=constants.ANCHOR_CLI_SERVICE_NAME,
+        recipe=ExecRecipe(
+            command=["cat", key_dir + "public_key.txt"],
+            extract={"public": "."},
+        ),
+    )
+    private_key_result = plan.exec(
+        service_name=constants.ANCHOR_CLI_SERVICE_NAME,
+        recipe=ExecRecipe(
+            command=["cat", key_dir + "private_key.txt"],
+            extract={"private": "."},
+        ),
+    )
+
+    # Store the private key file as the artifact
     pem_artifact = plan.store_service_files(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
-        src="/usr/local/bin/key.pem",
+        src=key_dir + "private_key.txt",
         name="key-{}".format(index),
     )
 
     return struct(
-        public_key=result["extract.public"],
-        private_key=result["extract.private"],
+        public_key=public_key_result["extract.public"],
+        private_key=private_key_result["extract.private"],
         artifact=pem_artifact
     )
