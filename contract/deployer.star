@@ -1,14 +1,15 @@
 constants = import_module("../utils/constants.star")
+utils = import_module("../utils/utils.star")
 
 # deploy all of the contracts
-def deploy(plan, el, genesis_constants):
+def deploy(plan, el, genesis_constants, args):
     env_vars = get_env_vars(el, genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key)
 
     # start the foundry service
     foundry_service = plan.add_service(
         name = constants.FOUNDRY_SERVICE_NAME,
         config = ServiceConfig(
-            image=constants.FOUNDRY_IMAGE,
+            image=utils.get_foundry_image_spec(args),
             entrypoint=["tail", "-f", "/dev/null"],
             env_vars = env_vars,
             files = {

@@ -1,4 +1,5 @@
 # https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
+
 network:
   participants:
   - el_type: geth
@@ -16,7 +17,8 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 100000000
+    # fulu fork doesnt work properly atm
+    #fulu_fork_epoch: 100000000
     
     # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section
@@ -33,4 +35,12 @@ nodes:
     count: 4
   anchor:
     count: 0
-  
+
+# Docker images configuration
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v0.3.1"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  foundry: "localssv/ssv-network" 

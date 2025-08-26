@@ -38,7 +38,7 @@ def run(plan, args):
     blocks.wait_until_node_reached_block(plan, el_service_name, 1)
 
     plan.print("deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants)
+    deployer.deploy(plan, el_rpc, genesis_constants, args)
 
     non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
     total_validators = network_args["network_params"]["preregistered_validator_count"]
@@ -54,7 +54,7 @@ def run(plan, args):
     )
 
     # Generate public/private keypair for every operator we are going to deploy
-    operator_keygen.start_cli(plan, keystore_files)
+    operator_keygen.start_cli(plan, keystore_files, args)
     
     number_of_keys = ssv_node_count + anchor_node_count
     
@@ -71,7 +71,8 @@ def run(plan, args):
         operator_data_artifact,
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.OWNER_ADDRESS,
-        el_rpc
+        el_rpc,
+        args
     )
 
     plan.print("registering network validators")
@@ -82,7 +83,8 @@ def run(plan, args):
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.SSV_TOKEN_CONTRACT,
         el_rpc,
-        genesis_constants
+        genesis_constants,
+        args
     )
 
     node_index = 0
@@ -93,7 +95,7 @@ def run(plan, args):
 
         # start up all of the anchor nodes
         config = utils.anchor_testnet_artifact(plan)
-        enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config)
+        enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config, args)
 
     node_index += anchor_node_count
 
@@ -114,7 +116,7 @@ def run(plan, args):
         plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
 
         plan.print("starting SSV node with index: " + str(node_index))
-        node_service = ssv_node.start(plan, node_index, config, is_exporter)
+        node_service = ssv_node.start(plan, node_index, config, is_exporter, args)
 
         plan.print("ssv node started. Service name: " + node_service.name)
 
@@ -130,4 +132,4 @@ def run(plan, args):
             return
 
         plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
-        monitor.start(plan, ssv_node_api_url, cl_url)
+        monitor.start(plan, ssv_node_api_url, cl_url, args)

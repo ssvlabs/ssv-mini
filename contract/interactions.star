@@ -1,4 +1,5 @@
 constants = import_module("../utils/constants.star")
+utils = import_module("../utils/utils.star")
 
 def register_operators(plan, public_keys, network_address):
     # Write the keys into the container as json.
@@ -40,12 +41,12 @@ def register_operators(plan, public_keys, network_address):
     return operator_data_artifact
 
 
-def register_validators(plan, keyshare_artifact, network_address, token_address, rpc, genesis_constants):
+def register_validators(plan, keyshare_artifact, network_address, token_address, rpc, genesis_constants, args):
     # have to add a new service since we have new files to mount and mounting files to existing services is not supported
     foundry_service = plan.add_service(
         name = "register-validator",
         config = ServiceConfig(
-            image=constants.FOUNDRY_IMAGE,
+            image=utils.get_foundry_image_spec(args),
             entrypoint=["tail", "-f", "/dev/null"],
             env_vars = {
                 "ETH_RPC_URL": rpc,

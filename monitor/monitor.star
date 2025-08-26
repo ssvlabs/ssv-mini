@@ -1,15 +1,14 @@
 constants = import_module("../utils/constants.star")
+utils = import_module("../utils/utils.star")
 postgres = import_module("postgres.star")
 redis = import_module("redis.star")
 
-MONITOR_DOCKER_IMAGE = "monitor"
-
-def start(plan, ssv_exporter_url, cl_url):
+def start(plan, ssv_exporter_url, cl_url, args):
     plan.print("Starting postgres")
-    postgres_service_name, postgres_port = postgres.start(plan)
+    postgres_service_name, postgres_port = postgres.start(plan, args)
 
     plan.print("Postgres started. Starting redis service")
-    redis_service_name, redis_port = redis.start(plan)
+    redis_service_name, redis_port = redis.start(plan, args)
 
     plan.print("Redis started. Starting realtime monitor")
     
@@ -21,7 +20,7 @@ def start(plan, ssv_exporter_url, cl_url):
     plan.add_service(
         name = "monitor-daemon",
         config = ServiceConfig( 
-            image=MONITOR_DOCKER_IMAGE,
+            image=utils.get_monitor_image(args),
             cmd=["start", "realtime"],
             env_vars=env_vars,
         )
@@ -33,7 +32,7 @@ def start(plan, ssv_exporter_url, cl_url):
     plan.add_service(
         name="monitor-api",
         config=ServiceConfig(
-            image=MONITOR_DOCKER_IMAGE,
+            image=utils.get_monitor_image(args),
             cmd=["api"],
             env_vars=env_vars,
             ports={

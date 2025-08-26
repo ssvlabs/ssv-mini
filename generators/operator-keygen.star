@@ -1,10 +1,11 @@
 constants = import_module("../utils/constants.star")
+utils = import_module("../utils/utils.star")
 
-def start_cli(plan, keystores):
+def start_cli(plan, keystores, args):
     plan.add_service(
         name=constants.ANCHOR_CLI_SERVICE_NAME,
         config=ServiceConfig(
-            image=constants.ANCHOR_IMAGE,
+            image=utils.get_anchor_image(args),
             entrypoint=["tail", "-f", "/dev/null"],
             files={
                 "/keystores": keystores.files_artifact_uuid,
@@ -36,7 +37,7 @@ def generate_operator_keys(plan, index):
     plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "./anchor keygen --data-dir " + key_dir + " --force"],
+            command=["/bin/sh", "-c", "anchor keygen --data-dir " + key_dir + " --force"],
         ),
     )
 
@@ -50,7 +51,7 @@ def generate_operator_keys(plan, index):
     private_key_result = plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["cat", key_dir + "private_key.txt"],
+            command=["cat", key_dir + "unencrypted_private_key.txt"],
             extract={"private": "."},
         ),
     )
@@ -58,7 +59,7 @@ def generate_operator_keys(plan, index):
     # Store the private key file as the artifact
     pem_artifact = plan.store_service_files(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
-        src=key_dir + "private_key.txt",
+        src=key_dir + "unencrypted_private_key.txt",
         name="key-{}".format(index),
     )
 

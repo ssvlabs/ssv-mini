@@ -8,11 +8,5 @@ OWNER_ADDRESS ="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
 
 ANCHOR_KEYSPLIT_SERVICE = "anchor-keysplit"
 ANCHOR_CLI_SERVICE_NAME = "anchor"
-ANCHOR_IMAGE = "node/anchor"
 
 FOUNDRY_SERVICE_NAME = "foundry"
-FOUNDRY_IMAGE = ImageBuildSpec(
-    image_name="localssv/ssv-network",
-    build_context_dir="./",
-    build_file="Dockerfile.contract",
-)

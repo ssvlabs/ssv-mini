@@ -1,11 +1,13 @@
-def start(plan):
+utils = import_module("../utils/utils.star")
+
+def start(plan, args):
     service_name = "redis"
     port = 6379
 
     plan.add_service(
         name=service_name,
         config=ServiceConfig(
-            image="redis:7.4.2",
+            image=utils.get_redis_image(args),
             ports={
                 "http": PortSpec(
                     number=port,
