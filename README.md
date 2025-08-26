@@ -128,6 +128,17 @@ Use this if you want to shutdown previous network and start one from genesis usi
 make reset
 ```
 
+## Unregistered Validator Keystores (Uniform Password)
+
+Unregistered validators are generated with a single uniform password to simplify testing.
+
+- Configure the password in `params.yaml` under:
+  - `extra_params.unregistered_validator_password: "password"`
+- Only unregistered validator keystores are affected. Registered validators keep using eth2-val-tools defaults.
+- Verification (after `make run-with-prepare`):
+  - `kurtosis service exec localnet validator-key-generation-ssv-validator-keystore-unregistered -- sh -lc 'head -n1 /node-keystores-unregistered/secrets/* | sort -u'`
+  - Expect exactly one line (the uniform password).
+
 ### Goals 
 
 - Anyone can run a SSV network on their pc

@@ -37,11 +37,12 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
     echo "Processing validator key: $VALIDATOR_KEY with nonce: $NONCE"
 
     KEYSTORE_PATH="$VALIDATOR_DIR/voting-keystore.json"
+    PASSWORD_FILE="../keystores/secrets/$VALIDATOR_KEY"
     TEMP_OUTPUT="$TEMP_DIR/$VALIDATOR_KEY-out.json"
-    
+
     anchor keysplit manual \
       --keystore-paths "$KEYSTORE_PATH" \
-      --password-file "../keystores/secrets/$VALIDATOR_KEY" \
+      --password-file "$PASSWORD_FILE" \
       --owner "$OWNER_ADDRESS" \
       --output-path "$TEMP_OUTPUT" \
       --operators "$OPERATOR_IDS" \

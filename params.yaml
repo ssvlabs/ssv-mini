@@ -26,12 +26,12 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 0
+    fulu_fork_epoch: 100000000
     perfect_peerdas_enabled: false
-    
-    # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
+
+    # 84 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes) + 10 unregistered validators
     # aligns with validator_count configuration under participants section
-    preregistered_validator_count: 74
+    preregistered_validator_count: 84
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
     # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration
     # Supported by Anchor.
@@ -54,7 +54,14 @@ nodes:
 images:
   ssv: "node/ssv"
   anchor: "sigp/anchor:v1.2.0" # if you want to use locally build anchor change to `node/anchor`
-  monitor: "monitor"
+  monitor: "ssvlabs/ethereum2-monitor:latest"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
   foundry: "localssv/ssv-network"
+  eth_val_tools: "protolambda/eth2-val-tools:latest"
+  lighthouse: "sigp/lighthouse:v7.1.0"
+
+extra_params:
+  unregistered_validator_count: 10
+  # Password to use for all unregistered EIP-2335 keystores (Lighthouse-generated)
+  unregistered_validator_password: "aetheria"
