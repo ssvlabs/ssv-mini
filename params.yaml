@@ -17,8 +17,8 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    # fulu fork doesnt work properly atm
-    #fulu_fork_epoch: 100000000
+    fulu_fork_epoch: 100000000
+    perfect_peerdas_enabled: true
     
     # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section

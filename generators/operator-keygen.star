@@ -30,16 +30,16 @@ def generate_keys(plan, num_keys):
 
 # Generate a new keypair 
 def generate_operator_keys(plan, index):
-    # Custom dir path passed to anchor keygen command with arg '--data-dir' based on latest anchor commits
-    key_dir = "/usr/local/bin/"
-    
     # Execute the anchor keygen command (new output based on latest anchor commits: public_key.txt, unencrypted_private_key.txt)
     plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "anchor keygen --data-dir " + key_dir + " --force"],
+            command=["/bin/sh", "-c", "anchor keygen --force"],
         ),
     )
+
+    # Read the public and private key files from the correct output directory
+    key_dir = "/root/.anchor/hoodi/"
 
     public_key_result = plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
@@ -56,7 +56,7 @@ def generate_operator_keys(plan, index):
         ),
     )
 
-    # Store the private key file as the artifact
+    # Store the private key file as the artifact (for compatibility with previous usage)
     pem_artifact = plan.store_service_files(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         src=key_dir + "unencrypted_private_key.txt",

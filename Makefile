@@ -4,12 +4,25 @@ SSV_NODE_COUNT?=4
 ENCLAVE_NAME?=localnet
 SSV_COMMIT?=stage
 
-default: run
+default: run-with-prepare
 
+# Run with prepare: Downloads latest repos (ssv stage, anchor unstable, ethereum2-monitor main) and builds Docker images
+.PHONY: run-with-prepare
+run-with-prepare: prepare
+	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
+
+# Run without prepare: Uses existing local repos and Docker images (for custom branches/versions)
 .PHONY: run
 run:
 	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
 
+# Reset with prepare: Clean and run with latest repos and fresh Docker images
+.PHONY: reset-with-prepare
+reset-with-prepare: prepare
+	kurtosis clean -a
+	kurtosis run --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
+
+# Reset without prepare: Clean and run with existing local repos and Docker images
 .PHONY: reset
 reset:
 	kurtosis clean -a
@@ -30,6 +43,7 @@ restart-ssv-nodes:
 		echo "Updating service: ssv-node-$$i"; \
 		kurtosis service update $(ENCLAVE_NAME) ssv-node-$$i; \
 	done
+
 .PHONY: prepare
 prepare:
 	@echo "⏳ Preparing requirements..."
@@ -37,7 +51,7 @@ prepare:
 		git clone https://github.com/ssvlabs/ssv.git ../ssv; \
 	else \
 		echo "✅ ssv repo already cloned."; \
-		cd ../ssv && git fetch && git checkout ${SSV_COMMIT}; \
+		cd ../ssv && git fetch && git checkout stage; \
 	fi
 	@docker image inspect node/ssv >/dev/null 2>&1 || (cd ../ssv && docker build -t node/ssv . && echo "✅ SSV image built successfully.")
 	@if [ ! -d "../anchor" ]; then \
