@@ -60,10 +60,9 @@ def generate_config(
 
     return rendered_artifact
 
-def start(plan, index, config_artifact, is_exporter, args):
+def start(plan, index, config_artifact, is_exporter, image):
     SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
     service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
-    image = utils.get_ssv_image(args)
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
     # Minimal service configuration

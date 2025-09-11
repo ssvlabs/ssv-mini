@@ -1,13 +1,11 @@
-utils = import_module("../utils/utils.star")
-
-def start(plan, args):
+def start(plan, image):
     service_name = "postgres"
     port = 5432
 
     plan.add_service(
         name=service_name,
         config=ServiceConfig(
-            image=utils.get_postgres_image(args),
+            image=image,
             env_vars={
                 "POSTGRES_USER": "postgres",
                 "POSTGRES_PASSWORD": "postgres",
