@@ -2,26 +2,35 @@
 network:
   participants:
   - el_type: geth
-    el_image: ethereum/client-go:v1.15.10
+    el_image: geth-bug
     cl_type: lighthouse
     cl_image: sigp/lighthouse:v7.0.0
     validator_count: 32
     count: 2
+  - el_type: geth
+    el_image: geth-good
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v7.0.0
+    validator_count: 32
+    count: 1
 
   additional_services:
     - dora # Helps to see validators are working
+    - forky # Helps to see the fork choice
 
   network_params:
     # this is 'kurtosis' network ID, which is a default network. With this configuration CL /spec endpoint will return CONFIG_NAME=testnet
     network_id: "3151908"
     deneb_fork_epoch: 0
-    electra_fork_epoch: 0
+    electra_fork_epoch: 1
     fulu_fork_epoch: 100000000
     perfect_peerdas_enabled: true
+    deposit_contract_address: "0x00000000219ab540356cBB839Cbe05303d7705Fa"
+    # deposit_contract_address: "0x6db20C530b3F96CD5ef64Da2b1b931Cb8f264009"
     
-    # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
+    # 106 = 32 validators * 3(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section
-    preregistered_validator_count: 74
+    preregistered_validator_count: 106
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
     # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration
     # preset: minimal
@@ -34,4 +43,12 @@ nodes:
     count: 4
   anchor:
     count: 0
-  
+
+deposits:
+  enabled: true
+  start_index: 0
+  count: 4
+  interval_seconds: 3
+  # Optional: path (relative to repo) to a deposit-data JSON file containing an array
+  # of entries with fields: pubkey, withdrawal_credentials, signature, deposit_data_root
+  # json_path: deposit/deposits.json

@@ -13,6 +13,7 @@ keysplit = import_module("./generators/keysplit.star")
 constants = import_module("./utils/constants.star")
 monitor = import_module("./monitor/monitor.star")
 cluster = import_module("./nodes/cluster.star")
+deposit_bot = import_module("./deposit/deposit_bot.star")
 
 def run(plan, args):
     plan.print("validating input")
@@ -33,12 +34,18 @@ def run(plan, args):
     plan.print("network launched. Network output: " + json.indent(json.encode(ethereum_network)))
 
     plan.print("blockchain network is running. Waiting for it to be ready")
-    cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
-    
-    blocks.wait_until_node_reached_block(plan, el_service_name, 1)
+
+    cl1_service_name, cl1_url, el1_service_name, el1_rpc, el1_ws = utils.get_network_attributes(ethereum_network.all_participants[0])
+    cl2_service_name, cl2_url, el2_service_name, el2_rpc, el2_ws = utils.get_network_attributes(ethereum_network.all_participants[1])
+    cl3_service_name, cl3_url, el3_service_name, el3_rpc, el3_ws = utils.get_network_attributes(ethereum_network.all_participants[2])
+
+    cl_multi_url = cl1_url + ";" + cl2_url + ";" + cl3_url
+    el_multi_ws = el1_ws + ";" + el2_ws + ";" + el3_ws
+
+    blocks.wait_until_node_reached_block(plan, el1_service_name, 1)
 
     plan.print("deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants)
+    deployer.deploy(plan, el1_rpc, genesis_constants)
 
     non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
     total_validators = network_args["network_params"]["preregistered_validator_count"]
@@ -71,7 +78,7 @@ def run(plan, args):
         operator_data_artifact,
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.OWNER_ADDRESS,
-        el_rpc
+        el1_rpc
     )
 
     plan.print("registering network validators")
@@ -81,7 +88,7 @@ def run(plan, args):
         keyshare_artifact,
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.SSV_TOKEN_CONTRACT,
-        el_rpc,
+        el1_rpc,
         genesis_constants
     )
 
@@ -93,7 +100,7 @@ def run(plan, args):
 
         # start up all of the anchor nodes
         config = utils.anchor_testnet_artifact(plan)
-        enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config)
+        enr = anchor_node.start(plan, anchor_node_count, cl1_url, el1_rpc, el1_ws, pem_artifacts, config)
 
     node_index += anchor_node_count
 
@@ -105,12 +112,12 @@ def run(plan, args):
     if ssv_node_count > 0:
         # SSV Node requires a 'mature' Execution Layer (EL) client for the Event Syncer component to function properly. 
         # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
-        blocks.wait_until_node_reached_block(plan, el_service_name, 16)
+        blocks.wait_until_node_reached_block(plan, el1_service_name, 16)
 
     # Start up the ssv nodes
     for _ in range(0, ssv_node_count):
         is_exporter = False
-        config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr, is_exporter)
+        config = ssv_node.generate_config(plan, node_index, cl_multi_url, el_multi_ws, private_keys[node_index], enr, is_exporter)
         plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
 
         plan.print("starting SSV node with index: " + str(node_index))
@@ -129,5 +136,38 @@ def run(plan, args):
             plan.print("no SSV nodes deployed. Skipping monitor deployment")
             return
 
-        plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
-        monitor.start(plan, ssv_node_api_url, cl_url)
+        plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl1_url))
+        monitor.start(plan, ssv_node_api_url, cl1_url)
+
+    # Optional: deposit submitter to help trigger EIP-6110 behavior
+    if "deposits" in args and args["deposits"].get("enabled", False):
+        plan.print("starting deposit generator and submitter")
+        start_index = int(args["deposits"].get("start_index", 0))
+        count = int(args["deposits"].get("count", 1))
+        interval = int(args["deposits"].get("interval_seconds", 3))
+        # Use EL RPC of participant 0 by default for casting
+        net_params = args["network"]["network_params"]
+        deposit_address = net_params.get("deposit_contract_address", "0x00000000219ab540356cBB839Cbe05303d7705Fa")
+        deposits_json_artifact = None
+        if "json_path" in args["deposits"]:
+            deposits_json_artifact = plan.upload_files(str(args["deposits"]["json_path"]))
+        else:
+            plan.print("no deposits.json provided; generating deposit-data with eth2-val-tools")
+            fork_version = "0x10000038"  # aligns with config.yaml in our generated testnet
+            deposits_json_artifact = deposit_bot.generate_deposits_with_eth2_val_tools(
+                plan,
+                eth_args.network_params.preregistered_validator_keys_mnemonic,
+                start_index,
+                count,
+                fork_version,
+                constants.OWNER_ADDRESS,
+            )
+        deposit_bot.start_deposit_bot(
+            plan,
+            el1_rpc,
+            deposit_address,
+            genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
+            count=count,
+            interval_seconds=interval,
+            deposits_json_artifact=deposits_json_artifact,
+        )
