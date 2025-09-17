@@ -1,11 +1,11 @@
-def start(plan):
+def start(plan, image):
     service_name = "postgres"
     port = 5432
 
     plan.add_service(
         name=service_name,
         config=ServiceConfig(
-            image="postgres:15",
+            image=image,
             env_vars={
                 "POSTGRES_USER": "postgres",
                 "POSTGRES_PASSWORD": "postgres",

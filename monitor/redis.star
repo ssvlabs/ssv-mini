@@ -1,11 +1,11 @@
-def start(plan):
+def start(plan, image):
     service_name = "redis"
     port = 6379
 
     plan.add_service(
         name=service_name,
         config=ServiceConfig(
-            image="redis:7.4.2",
+            image=image,
             ports={
                 "http": PortSpec(
                     number=port,

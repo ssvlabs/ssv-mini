@@ -1,10 +1,11 @@
 constants = import_module("../utils/constants.star")
+utils = import_module("../utils/utils.star")
 
-def split_keys(plan, keystores, operator_data_artifact, network_address, owner_address, rpc):
+def split_keys(plan, keystores, operator_data_artifact, network_address, owner_address, rpc, args):
     plan.add_service(
         name=constants.ANCHOR_KEYSPLIT_SERVICE,
         config=ServiceConfig(
-            image=constants.ANCHOR_IMAGE,
+            image=utils.get_anchor_image(args),
             entrypoint=["tail", "-f", "/dev/null"],
             files={
                 "/usr/local/bin/operator_data": operator_data_artifact,
@@ -21,7 +22,7 @@ def split_keys(plan, keystores, operator_data_artifact, network_address, owner_a
     plan.exec(
         service_name=constants.ANCHOR_KEYSPLIT_SERVICE,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "chmod u+x keysplit/keysplit.sh && cd keysplit && ./keysplit.sh"]
+            command=["/bin/sh", "-c", "cd /usr/local/bin/keysplit && chmod u+x keysplit.sh && ./keysplit.sh"]
         )
     )
 

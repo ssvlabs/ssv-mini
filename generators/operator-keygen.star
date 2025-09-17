@@ -1,10 +1,11 @@
 constants = import_module("../utils/constants.star")
+utils = import_module("../utils/utils.star")
 
-def start_cli(plan, keystores):
+def start_cli(plan, keystores, args):
     plan.add_service(
         name=constants.ANCHOR_CLI_SERVICE_NAME,
         config=ServiceConfig(
-            image=constants.ANCHOR_IMAGE,
+            image=utils.get_anchor_image(args),
             entrypoint=["tail", "-f", "/dev/null"],
             files={
                 "/keystores": keystores.files_artifact_uuid,
@@ -33,7 +34,7 @@ def generate_operator_keys(plan, index):
     plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "./anchor keygen --force"],
+            command=["/bin/sh", "-c", "anchor keygen --force"],
         ),
     )
 

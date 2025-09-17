@@ -1,5 +1,40 @@
 constants = import_module("constants.star")
 
+# Image utility functions
+def get_image(args, image_name):
+    """Get image name from configuration, with fallback to default"""
+    images = args.get("images", {})
+    return images.get(image_name, "")
+
+def get_ssv_image(args):
+    """Get SSV node image"""
+    return get_image(args, "ssv")
+
+def get_anchor_image(args):
+    """Get Anchor node image"""
+    return get_image(args, "anchor")
+
+def get_monitor_image(args):
+    """Get Monitor image"""
+    return get_image(args, "monitor")
+
+def get_redis_image(args):
+    """Get Redis image"""
+    return get_image(args, "redis")
+
+def get_postgres_image(args):
+    """Get PostgreSQL image"""
+    return get_image(args, "postgres")
+
+def get_foundry_image_spec(args):
+    """Get Foundry image build spec"""
+    foundry_image_name = get_image(args, "foundry")
+    return ImageBuildSpec(
+        image_name=foundry_image_name,
+        build_context_dir="./",
+        build_file="Dockerfile.contract",
+    )
+
 def get_network_attributes(all_participants):
     el_context = all_participants[0].el_context
     el_service_name = el_context.service_name
