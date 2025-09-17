@@ -51,7 +51,7 @@ prepare:
 		git clone https://github.com/ssvlabs/ssv.git ../ssv; \
 	else \
 		echo "✅ ssv repo already cloned."; \
-		cd ../ssv && git fetch && git checkout stage; \
+		cd ../ssv && git fetch && git checkout ${SSV_COMMIT}; \
 	fi
 	@docker image inspect node/ssv >/dev/null 2>&1 || (cd ../ssv && docker build -t node/ssv . && echo "✅ SSV image built successfully.")
 	@if [ ! -d "../anchor" ]; then \
