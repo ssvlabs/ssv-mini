@@ -102,6 +102,16 @@ The `prepare` command automatically manages the following repositories:
 
 All repositories are cloned to the parent directory (`../`) relative to the ssv-mini project.
 
+### ⚠️ Anchor Image Configuration
+
+- The `prepare` command (used by `run-with-prepare` and `reset-with-prepare`) builds the anchor image locally as `node/anchor`
+- However, `params.yaml` defaults to using the remote image `sigp/anchor:v0.3.1`
+- At runtime, the configuration uses the value from `params.yaml`, so the locally built `node/anchor` image is ignored
+
+**Workaround:** To use the locally built anchor image, you need to manually change the `anchor` value in `params.yaml` from `"sigp/anchor:{tag}"` to `"node/anchor"`.
+
+This inconsistency will be addressed in a future update with a more comprehensive approach that allows specifying the anchor source (local vs remote) via command-line parameters.
+
 ### Starting Over
 
 #### With Automated Setup (Recommended)
