@@ -1,4 +1,5 @@
 NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR = "/node-keystores"
+NODE_UNREGISTERED_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR = "/node-keystores-unregistered"
 
 PRYSM_PASSWORD = "password"
 PRYSM_PASSWORD_FILEPATH_ON_GENERATOR = "/tmp/prysm-password.txt"
@@ -20,7 +21,8 @@ TEKU_SECRETS_DIRNAME = "teku-secrets"
 
 KEYSTORE_GENERATION_FINISHED_FILEPATH_FORMAT = "/tmp/keystores_generated-{0}-{1}"
 
-SERVICE_NAME = "validator-key-generation-ssv-validator-keystore"
+SERVICE_NAME_REGSITER = "validator-key-generation-ssv-validator-keystore"    
+SERVICE_NAME_UNREGSITER = "validator-key-generation-ssv-validator-keystore-unregistered"    
 
 ENTRYPOINT_ARGS = [
     "sleep",
@@ -36,24 +38,31 @@ SERVICE_CONFIG = ServiceConfig(
 ARTIFACT_PREFIX = 'ssv-validators'
 
 
-def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
-    plan.add_service(SERVICE_NAME, SERVICE_CONFIG)
+def generate_validator_keystores(plan, mnemonic, start_index, validator_count, register=True):
+    if register:
+        service_name = SERVICE_NAME_REGSITER
+        output_dirpath = NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR
+    else:
+        service_name = SERVICE_NAME_UNREGSITER
+        output_dirpath = NODE_UNREGISTERED_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR
+    
+    plan.add_service(service_name, SERVICE_CONFIG)
 
     stop_index = start_index + validator_count
 
     generate_keystores_cmd = '{0} keystores --insecure --prysm-pass {1} --out-loc {2} --source-mnemonic "{3}" --source-min {4} --source-max {5}'.format(
         KEYSTORES_GENERATION_TOOL_NAME,
         PRYSM_PASSWORD,
-        NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR,
+        output_dirpath ,
         mnemonic,
         start_index,
         stop_index,
     )
     teku_permissions_cmd = (
-            "chmod 0777 -R " + NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR + "/" + TEKU_KEYS_DIRNAME
+            "chmod 0777 -R " + output_dirpath  + "/" + TEKU_KEYS_DIRNAME
     )
     raw_secret_permissions_cmd = (
-            "chmod 0600 -R " + NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR + "/" + RAW_SECRETS_DIRNAME
+            "chmod 0600 -R " + output_dirpath  + "/" + RAW_SECRETS_DIRNAME
     )
 
     all_sub_command_strs = [generate_keystores_cmd, teku_permissions_cmd, raw_secret_permissions_cmd]
@@ -61,7 +70,7 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
     command_str = " && ".join(all_sub_command_strs)
 
     command_result = plan.exec(
-        recipe=ExecRecipe(command=["sh", "-c", command_str]), service_name=SERVICE_NAME
+        recipe=ExecRecipe(command=["sh", "-c", command_str]), service_name=service_name
     )
     plan.verify(command_result["code"], "==", SUCCESSFUL_EXEC_CMD_EXIT_CODE)
 
@@ -71,10 +80,10 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
         stop_index - 1,
     )
     artifact_name = plan.store_service_files(
-        SERVICE_NAME, NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR, name=artifact_name
+        service_name, output_dirpath , name=artifact_name
     )
 
-    base_dirname_in_artifact = path_base(NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR)
+    base_dirname_in_artifact = path_base(output_dirpath )
     keystore_files = struct(
         files_artifact_uuid=artifact_name,
         raw_root_dirpath=path_join(base_dirname_in_artifact),
