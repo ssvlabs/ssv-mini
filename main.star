@@ -38,9 +38,7 @@ def run(plan, args):
     cl1_service_name, cl1_url, el1_service_name, el1_rpc, el1_ws = utils.get_network_attributes(ethereum_network.all_participants[0])
     cl2_service_name, cl2_url, el2_service_name, el2_rpc, el2_ws = utils.get_network_attributes(ethereum_network.all_participants[1])
     cl3_service_name, cl3_url, el3_service_name, el3_rpc, el3_ws = utils.get_network_attributes(ethereum_network.all_participants[2])
-
-    cl_multi_url = cl1_url + ";" + cl2_url + ";" + cl3_url
-    el_multi_ws = el1_ws + ";" + el2_ws + ";" + el3_ws
+    cl8_service_name, cl8_url, el8_service_name, el8_rpc, el8_ws = utils.get_network_attributes(ethereum_network.all_participants[7])
 
     blocks.wait_until_node_reached_block(plan, el1_service_name, 1)
 
@@ -114,10 +112,13 @@ def run(plan, args):
         # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
         blocks.wait_until_node_reached_block(plan, el1_service_name, 16)
 
+    cl_urls = [cl1_url, cl2_url, cl3_url, cl8_url]
+    el_urls = [el1_ws, el2_ws, el3_ws, el8_ws]
+
     # Start up the ssv nodes
-    for _ in range(0, ssv_node_count):
+    for i in range(0, ssv_node_count):
         is_exporter = False
-        config = ssv_node.generate_config(plan, node_index, cl_multi_url, el_multi_ws, private_keys[node_index], enr, is_exporter)
+        config = ssv_node.generate_config(plan, node_index, cl_urls[i], el_urls[i], private_keys[node_index], enr, is_exporter)
         plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
 
         plan.print("starting SSV node with index: " + str(node_index))
@@ -141,6 +142,10 @@ def run(plan, args):
 
     # Optional: deposit submitter to help trigger EIP-6110 behavior
     if "deposits" in args and args["deposits"].get("enabled", False):
+        wait_for_block = int(args["deposits"].get("wait_for_block", 40))
+        plan.print("waiting for block 40 to start deposit generator")
+        blocks.wait_until_node_reached_block(plan, el1_service_name, wait_for_block)
+
         plan.print("starting deposit generator and submitter")
         start_index = int(args["deposits"].get("start_index", 0))
         count = int(args["deposits"].get("count", 1))
