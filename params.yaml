@@ -5,24 +5,17 @@ network:
     el_image: geth-good
     cl_type: lighthouse
     cl_image: sigp/lighthouse:v7.0.0
-    validator_count: 8
+    validator_count: 32
     count: 3
   - el_type: geth
     el_image: geth-bug
     cl_type: lighthouse
     cl_image: sigp/lighthouse:v7.0.0
-    validator_count: 8
+    validator_count: 32
     count: 5
 
   additional_services:
     - dora # Helps to see validators are working
-    - forky # Helps to see the fork choice
-    # - blockscout
-    # - full_beaconchain_explorer
-    # - forkmon
-    # - blobscan
-    # - prometheus
-    # - grafana
 
   network_params:
     # this is 'kurtosis' network ID, which is a default network. With this configuration CL /spec endpoint will return CONFIG_NAME=testnet
@@ -32,11 +25,10 @@ network:
     fulu_fork_epoch: 100000000
     perfect_peerdas_enabled: true
     deposit_contract_address: "0x00000000219ab540356cBB839Cbe05303d7705Fa"
-    # deposit_contract_address: "0x6db20C530b3F96CD5ef64Da2b1b931Cb8f264009"
-    
+
     # 106 = 32 validators * 5(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section
-    preregistered_validator_count: 65
+    preregistered_validator_count: 266
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
     # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration
     # preset: minimal
