@@ -161,7 +161,7 @@ def run(plan, args):
             deposits_json_artifact = plan.upload_files(str(args["deposits"]["json_path"]))
         else:
             plan.print("no deposits.json provided; generating deposit-data with eth2-val-tools")
-            fork_version = "0x10000038"  # aligns with config.yaml in our generated testnet
+            fork_version = "0x10000038"  # aligns with config.yaml
             deposits_json_artifact = deposit_bot.generate_deposits_with_eth2_val_tools(
                 plan,
                 eth_args.network_params.preregistered_validator_keys_mnemonic,
