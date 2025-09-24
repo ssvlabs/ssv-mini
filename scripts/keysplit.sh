@@ -1,4 +1,16 @@
 #!/bin/bash
+set -e
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null
+then
+    echo "jq is not installed. Installing..."
+    apt update -y
+    apt install -y jq
+else
+    echo "jq is already installed."
+fi
+
 NONCE="0"
 TEMP_DIR=$(mktemp -d)
 FINAL_SHARES=()
@@ -28,7 +40,7 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
     KEYSTORE_PATH="$VALIDATOR_DIR/voting-keystore.json"
     TEMP_OUTPUT="$TEMP_DIR/$VALIDATOR_KEY-out.json"
     
-    ../anchor keysplit manual \
+    anchor keysplit manual \
       --keystore-path "$KEYSTORE_PATH" \
       --password "$PASSWORD" \
       --owner "$OWNER_ADDRESS" \

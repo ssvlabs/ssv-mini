@@ -2,7 +2,7 @@ constants = import_module("../../utils/constants.star")
 utils = import_module("../../utils/utils.star")
 
 # Start an anchor node
-def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
+def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
     IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
     enr = ""
     
@@ -19,8 +19,8 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
     plan.add_service(
         name = name,
         config=ServiceConfig(
-            image = constants.ANCHOR_IMAGE,
-            entrypoint=["./anchor"],
+            image = image,
+            entrypoint=["anchor"],
             cmd=command_arr,
             files = files,
             private_ip_address_placeholder=IP_PLACEHOLDER,
@@ -50,8 +50,8 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config):
         plan.add_service(
             name = name,
             config=ServiceConfig(
-                image = constants.ANCHOR_IMAGE,
-                entrypoint=["./anchor"],
+                image = image,
+                entrypoint=["anchor"],
                 cmd=command_arr,
                 files = files,
                 private_ip_address_placeholder=IP_PLACEHOLDER

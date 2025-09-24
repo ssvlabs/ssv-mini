@@ -1,4 +1,16 @@
 #!/bin/bash
+set -e
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null
+then
+    echo "jq is not installed. Installing..."
+    apt update -y
+    apt install -y jq
+else
+    echo "jq is already installed."
+fi
+
 
 cast send $SSV_TOKEN_ADDRESS "approve(address,uint256)" $SSV_NETWORK_ADDRESS 1000000000000000000 --private-key $PRIVATE_KEY --rpc-url $ETH_RPC_URL --legacy --silent
 

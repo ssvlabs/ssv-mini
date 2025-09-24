@@ -30,7 +30,7 @@ def generate_config(
         DBPath="./data/db/{}/".format(index),
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
-        Network="testnet", #if not set - default to "mainnet"
+        Network="local-testnet", #if not set - default to "mainnet"
         DomainType="0x00000000",
         RegistrySyncOffset="1",
         RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
@@ -60,10 +60,9 @@ def generate_config(
 
     return rendered_artifact
 
-def start(plan, index, config_artifact, is_exporter):
+def start(plan, index, config_artifact, is_exporter, image):
     SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
     service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
-    image = "node/ssv"  # Matches the new Docker image name
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
     # Minimal service configuration

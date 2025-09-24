@@ -20,6 +20,14 @@ def run(plan, args):
     ssv_node_count = args["nodes"]["ssv"]["count"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
 
+    # Retrieve all Docker images at the start
+    ssv_image = utils.get_ssv_image(args)
+    anchor_image = utils.get_anchor_image(args)
+    monitor_image = utils.get_monitor_image(args)
+    postgres_image = utils.get_postgres_image(args)
+    redis_image = utils.get_redis_image(args)
+    foundry_image_spec = utils.get_foundry_image_spec(args)
+
     plan.print("validating configurations...")
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
         fail("invalid cluster size: ", str(ssv_node_count + anchor_node_count))
@@ -43,7 +51,7 @@ def run(plan, args):
     blocks.wait_until_node_reached_block(plan, el1_service_name, 1)
 
     plan.print("deploying SSV smart contracts")
-    deployer.deploy(plan, el1_rpc, genesis_constants)
+    deployer.deploy(plan, el1_rpc, genesis_constants, foundry_image_spec)
 
     non_ssv_validators = 0
     for p in network_args["participants"]:
@@ -62,7 +70,7 @@ def run(plan, args):
     )
 
     # Generate public/private keypair for every operator we are going to deploy
-    operator_keygen.start_cli(plan, keystore_files)
+    operator_keygen.start_cli(plan, keystore_files, args)
     
     number_of_keys = ssv_node_count + anchor_node_count
     
@@ -79,7 +87,8 @@ def run(plan, args):
         operator_data_artifact,
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.OWNER_ADDRESS,
-        el1_rpc
+        el1_rpc,
+        args
     )
 
     plan.print("registering network validators")
@@ -90,7 +99,8 @@ def run(plan, args):
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.SSV_TOKEN_CONTRACT,
         el1_rpc,
-        genesis_constants
+        genesis_constants,
+        args
     )
 
     node_index = 0
@@ -101,7 +111,7 @@ def run(plan, args):
 
         # start up all of the anchor nodes
         config = utils.anchor_testnet_artifact(plan)
-        enr = anchor_node.start(plan, anchor_node_count, cl1_url, el1_rpc, el1_ws, pem_artifacts, config)
+        enr = anchor_node.start(plan, anchor_node_count, cl1_url, el1_rpc, el1_ws, pem_artifacts, config, anchor_image)
 
     node_index += anchor_node_count
 
@@ -125,7 +135,7 @@ def run(plan, args):
         plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
 
         plan.print("starting SSV node with index: " + str(node_index))
-        node_service = ssv_node.start(plan, node_index, config, is_exporter)
+        node_service = ssv_node.start(plan, node_index, config, is_exporter, ssv_image)
 
         plan.print("ssv node started. Service name: " + node_service.name)
 
@@ -140,8 +150,8 @@ def run(plan, args):
             plan.print("no SSV nodes deployed. Skipping monitor deployment")
             return
 
-        plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl1_url))
-        monitor.start(plan, ssv_node_api_url, cl1_url)
+        plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
+        monitor.start(plan, ssv_node_api_url, cl1_url, monitor_image, postgres_image, redis_image)
 
     # Optional: deposit submitter to help trigger EIP-6110 behavior
     if "deposits" in args and args["deposits"].get("enabled", False):

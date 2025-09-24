@@ -1,0 +1,7 @@
+# Ignore kubernetes directory when building Docker image
+kubernetes/
+.git/
+.gitignore
+*.md
+.DS_Store
+Thumbs.db
