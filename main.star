@@ -45,7 +45,10 @@ def run(plan, args):
     plan.print("deploying SSV smart contracts")
     deployer.deploy(plan, el1_rpc, genesis_constants)
 
-    non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
+    non_ssv_validators = 0
+    for p in network_args["participants"]:
+        non_ssv_validators += p["validator_count"] * p["count"]
+
     total_validators = network_args["network_params"]["preregistered_validator_count"]
     
     eth_args = input_parser.input_parser(plan, network_args)
