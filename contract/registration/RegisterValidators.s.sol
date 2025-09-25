@@ -8,15 +8,15 @@ import {console2} from "forge-std/console2.sol";
 contract RegisterValidator is Script {
 
   SSVNetwork public ssvNetwork;
-  
+
   // Initial deposit amount (adjust as needed)
   uint256 constant DEPOSIT_AMOUNT = 1 ether;
 
   function run(address ssvNetworkAddress, bytes[] memory publicKeys, bytes[] memory sharesDatas, uint64[] memory operatorIds) external {
     ssvNetwork = SSVNetwork(ssvNetworkAddress);
-    
+
     vm.startBroadcast();
-    
+
     // Create an empty cluster
     ISSVNetworkCore.Cluster memory cluster;
     cluster.validatorCount = 0;
@@ -24,7 +24,7 @@ contract RegisterValidator is Script {
     cluster.index = 0;
     cluster.active = true;
     cluster.balance = 0;
-    
+
     ssvNetwork.bulkRegisterValidator(
       publicKeys,
       operatorIds,
@@ -32,9 +32,9 @@ contract RegisterValidator is Script {
       DEPOSIT_AMOUNT,
       cluster
     );
-    
+
     console2.log("Successfully registered validator");
-    
+
     vm.stopBroadcast();
   }
 }

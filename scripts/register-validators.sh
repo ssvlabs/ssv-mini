@@ -30,6 +30,6 @@ OPERATOR_IDS=$(jq -r ".shares[0].payload.operatorIds | join(\",\")" "$JSON_FILE"
 forge script /app/script/register-validator/RegisterValidators.s.sol:RegisterValidator \
     --sig "run(address,bytes[],bytes[],uint64[])" \
     "$SSV_NETWORK_ADDRESS" "[$PUBLIC_KEYS]" "[$SHARES_DATA]" "[$OPERATOR_IDS]" --broadcast --rpc-url $ETH_RPC_URL --private-key $PRIVATE_KEY --legacy --silent
-  
+
 
 echo "All validators have been registered"

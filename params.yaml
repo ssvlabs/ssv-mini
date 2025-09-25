@@ -3,11 +3,17 @@
 network:
   participants:
   - el_type: geth
-    el_image: ethereum/client-go:v1.15.10
+    el_image: geth-good
     cl_type: lighthouse
     cl_image: sigp/lighthouse:v7.0.0
     validator_count: 32
-    count: 2
+    count: 3
+  - el_type: geth
+    el_image: geth-bug
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v7.0.0
+    validator_count: 32
+    count: 5
 
   additional_services:
     - dora # Helps to see validators are working
@@ -16,13 +22,14 @@ network:
     # this is 'kurtosis' network ID, which is a default network. With this configuration CL /spec endpoint will return CONFIG_NAME=testnet
     network_id: "3151908"
     deneb_fork_epoch: 0
-    electra_fork_epoch: 0
+    electra_fork_epoch: 1
     fulu_fork_epoch: 100000000
     perfect_peerdas_enabled: true
-    
-    # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
+    deposit_contract_address: "0x00000000219ab540356cBB839Cbe05303d7705Fa"
+
+    # 106 = 32 validators * 5(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section
-    preregistered_validator_count: 74
+    preregistered_validator_count: 266
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
     # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration
     # preset: minimal
@@ -33,6 +40,7 @@ monitor:
 nodes:
   ssv:
     count: 4
+    eth_node_indices: [0,1,2,7]
   anchor:
     count: 0
 
@@ -43,4 +51,14 @@ images:
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
-  foundry: "localssv/ssv-network" 
+  foundry: "localssv/ssv-network"
+
+deposits:
+  enabled: true
+  start_index: 0
+  count: 20
+  interval_seconds: 3
+  wait_for_block: 40 # should be enough to happen in epoch 1
+  # Optional: path (relative to repo) to a deposit-data JSON file containing an array
+  # of entries with fields: pubkey, withdrawal_credentials, signature, deposit_data_root
+  # json_path: deposit/deposits.json
