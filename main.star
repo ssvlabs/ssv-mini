@@ -43,15 +43,12 @@ def run(plan, args):
 
     plan.print("blockchain network is running. Waiting for it to be ready")
 
-    cl1_service_name, cl1_url, el1_service_name, el1_rpc, el1_ws = utils.get_network_attributes(ethereum_network.all_participants[0])
-    cl2_service_name, cl2_url, el2_service_name, el2_rpc, el2_ws = utils.get_network_attributes(ethereum_network.all_participants[1])
-    cl3_service_name, cl3_url, el3_service_name, el3_rpc, el3_ws = utils.get_network_attributes(ethereum_network.all_participants[2])
-    cl8_service_name, cl8_url, el8_service_name, el8_rpc, el8_ws = utils.get_network_attributes(ethereum_network.all_participants[7])
+    cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants[0])
 
-    blocks.wait_until_node_reached_block(plan, el1_service_name, 1)
+    blocks.wait_until_node_reached_block(plan, el_service_name, 1)
 
     plan.print("deploying SSV smart contracts")
-    deployer.deploy(plan, el1_rpc, genesis_constants, foundry_image_spec)
+    deployer.deploy(plan, el_rpc, genesis_constants, foundry_image_spec)
 
     non_ssv_validators = 0
     for p in network_args["participants"]:
@@ -87,7 +84,7 @@ def run(plan, args):
         operator_data_artifact,
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.OWNER_ADDRESS,
-        el1_rpc,
+        el_rpc,
         args
     )
 
@@ -98,7 +95,7 @@ def run(plan, args):
         keyshare_artifact,
         constants.SSV_NETWORK_PROXY_CONTRACT, 
         constants.SSV_TOKEN_CONTRACT,
-        el1_rpc,
+        el_rpc,
         genesis_constants,
         args
     )
@@ -111,7 +108,7 @@ def run(plan, args):
 
         # start up all of the anchor nodes
         config = utils.anchor_testnet_artifact(plan)
-        enr = anchor_node.start(plan, anchor_node_count, cl1_url, el1_rpc, el1_ws, pem_artifacts, config, anchor_image)
+        enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config, anchor_image)
 
     node_index += anchor_node_count
 
@@ -123,15 +120,17 @@ def run(plan, args):
     if ssv_node_count > 0:
         # SSV Node requires a 'mature' Execution Layer (EL) client for the Event Syncer component to function properly. 
         # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
-        blocks.wait_until_node_reached_block(plan, el1_service_name, 16)
-
-    cl_urls = [cl1_url, cl2_url, cl3_url, cl8_url]
-    el_urls = [el1_ws, el2_ws, el3_ws, el8_ws]
+        blocks.wait_until_node_reached_block(plan, el_service_name, 16)
 
     # Start up the ssv nodes
     for i in range(0, ssv_node_count):
+        eth_node_indices = args["nodes"]["ssv"]["eth_node_indices"]
+
+        cl_i_service_name, cl_i_url, el_i_service_name, el_i_rpc, el_i_ws = utils.get_network_attributes(
+            ethereum_network.all_participants[eth_node_indices[i]])
+
         is_exporter = False
-        config = ssv_node.generate_config(plan, node_index, cl_urls[i], el_urls[i], private_keys[node_index], enr, is_exporter)
+        config = ssv_node.generate_config(plan, node_index, cl_i_url, el_i_ws, private_keys[node_index], enr, is_exporter)
         plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
 
         plan.print("starting SSV node with index: " + str(node_index))
@@ -151,13 +150,13 @@ def run(plan, args):
             return
 
         plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
-        monitor.start(plan, ssv_node_api_url, cl1_url, monitor_image, postgres_image, redis_image)
+        monitor.start(plan, ssv_node_api_url, cl_url, monitor_image, postgres_image, redis_image)
 
     # Optional: deposit submitter to help trigger EIP-6110 behavior
     if "deposits" in args and args["deposits"].get("enabled", False):
         wait_for_block = int(args["deposits"].get("wait_for_block", 40))
         plan.print("waiting for block 40 to start deposit generator")
-        blocks.wait_until_node_reached_block(plan, el1_service_name, wait_for_block)
+        blocks.wait_until_node_reached_block(plan, el_service_name, wait_for_block)
 
         plan.print("starting deposit generator and submitter")
         start_index = int(args["deposits"].get("start_index", 0))
@@ -182,7 +181,7 @@ def run(plan, args):
             )
         deposit_bot.start_deposit_bot(
             plan,
-            el1_rpc,
+            el_rpc,
             deposit_address,
             genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
             count=count,
