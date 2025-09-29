@@ -122,10 +122,14 @@ def run(plan, args):
         # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
         blocks.wait_until_node_reached_block(plan, el_service_name, 16)
 
+    eth_node_indices = None
+    if "eth_node_indices" in args["nodes"]["ssv"]:
+        eth_node_indices = args["nodes"]["ssv"]["eth_node_indices"]
+    else:
+        eth_node_indices = [0] * ssv_node_count
+
     # Start up the ssv nodes
     for i in range(0, ssv_node_count):
-        eth_node_indices = args["nodes"]["ssv"]["eth_node_indices"]
-
         cl_i_service_name, cl_i_url, el_i_service_name, el_i_rpc, el_i_ws = utils.get_network_attributes(
             ethereum_network.all_participants[eth_node_indices[i]])
 

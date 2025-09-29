@@ -69,3 +69,33 @@ prepare:
 	fi
 	@docker image inspect monitor >/dev/null 2>&1 || (cd ../ethereum2-monitor && docker build -t monitor . && echo "✅ Ethereum2 Monitor image built successfully.")
 	@echo "✅ All requirements are prepared, spinning up the enclave..."
+
+###### SCENARIOS ######
+
+
+### Majority fork
+
+PARAMS_FILE_MAJORITY_FORK=params-majority-fork.yaml
+
+# Prepare images for the majority fork. Run the `prepare` step and build go-ethereum image.
+.PHONY: prepare-majority-fork
+prepare-majority-fork: prepare
+	@if [ ! -d "../go-ethereum" ]; then \
+		git clone https://github.com/ethereum/go-ethereum.git ../go-ethereum; \
+	else \
+		echo "✅ go-ethereum repo already cloned."; \
+		cd ../go-ethereum && git fetch && git checkout master; \
+	fi
+	@docker image inspect geth >/dev/null 2>&1 || (cd ../go-ethereum && docker build -t node/ssv . && echo "✅ Geth image built successfully.")
+
+# Run the majority fork scenario without prepare: Uses existing local repos and Docker images (for custom branches/versions).
+# It must be prepared manually until its prepare step is implemented. Make sure all images are ready.
+.PHONY: run-majority-fork
+run-majority-fork:
+	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE_MAJORITY_FORK})"
+
+# Run the majority fork scenario with prepare:
+# Downloads latest repos (ssv stage, anchor unstable, ethereum2-monitor main, go-ethereum) and builds Docker images
+.PHONY: run-majority-fork-with-prepare
+run-majority-fork-with-prepare: prepare
+	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE_MAJORITY_FORK})"
