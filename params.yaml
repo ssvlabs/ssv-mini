@@ -27,7 +27,7 @@ network:
     perfect_peerdas_enabled: true
     deposit_contract_address: "0x00000000219ab540356cBB839Cbe05303d7705Fa"
 
-    # 106 = 32 validators * 5(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
+    # 266 = 32 validators * 8(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section
     preregistered_validator_count: 266
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
