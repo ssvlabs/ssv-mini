@@ -18,7 +18,7 @@ network:
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
     fulu_fork_epoch: 100000000
-   perfect_peerdas_enabled: true
+    perfect_peerdas_enabled: true
     
     # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
     # aligns with validator_count configuration under participants section
@@ -43,4 +43,4 @@ images:
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
-  foundry: "localssv/ssv-network"
+  foundry: "localssv/ssv-network" 
