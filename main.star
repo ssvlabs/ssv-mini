@@ -13,12 +13,13 @@ keysplit = import_module("./generators/keysplit.star")
 constants = import_module("./utils/constants.star")
 monitor = import_module("./monitor/monitor.star")
 cluster = import_module("./nodes/cluster.star")
+deposit_bot = import_module("./deposit/deposit_bot.star")
 
 def run(plan, args):
     plan.print("validating input")
     ssv_node_count = args["nodes"]["ssv"]["count"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
-    
+
     # Retrieve all Docker images at the start
     ssv_image = utils.get_ssv_image(args)
     anchor_image = utils.get_anchor_image(args)
@@ -41,14 +42,18 @@ def run(plan, args):
     plan.print("network launched. Network output: " + json.indent(json.encode(ethereum_network)))
 
     plan.print("blockchain network is running. Waiting for it to be ready")
-    cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
-    
+
+    cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants[0])
+
     blocks.wait_until_node_reached_block(plan, el_service_name, 1)
 
     plan.print("deploying SSV smart contracts")
     deployer.deploy(plan, el_rpc, genesis_constants, foundry_image_spec)
 
-    non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
+    non_ssv_validators = 0
+    for p in network_args["participants"]:
+        non_ssv_validators += p["validator_count"] * p["count"]
+
     total_validators = network_args["network_params"]["preregistered_validator_count"]
     
     eth_args = input_parser.input_parser(plan, network_args)
@@ -117,10 +122,19 @@ def run(plan, args):
         # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
         blocks.wait_until_node_reached_block(plan, el_service_name, 16)
 
+    eth_node_indices = None
+    if "eth_node_indices" in args["nodes"]["ssv"]:
+        eth_node_indices = args["nodes"]["ssv"]["eth_node_indices"]
+    else:
+        eth_node_indices = [0] * ssv_node_count
+
     # Start up the ssv nodes
-    for _ in range(0, ssv_node_count):
+    for i in range(0, ssv_node_count):
+        cl_i_service_name, cl_i_url, el_i_service_name, el_i_rpc, el_i_ws = utils.get_network_attributes(
+            ethereum_network.all_participants[eth_node_indices[i]])
+
         is_exporter = False
-        config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr, is_exporter)
+        config = ssv_node.generate_config(plan, node_index, cl_i_url, el_i_ws, private_keys[node_index], enr, is_exporter)
         plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
 
         plan.print("starting SSV node with index: " + str(node_index))
@@ -141,3 +155,40 @@ def run(plan, args):
 
         plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
         monitor.start(plan, ssv_node_api_url, cl_url, monitor_image, postgres_image, redis_image)
+
+    # Optional: deposit submitter to help trigger EIP-6110 behavior
+    if "deposits" in args and args["deposits"].get("enabled", False):
+        wait_for_block = int(args["deposits"].get("wait_for_block", 0))
+        plan.print("waiting for block {} to start deposit generator".format(wait_for_block))
+        blocks.wait_until_node_reached_block(plan, el_service_name, wait_for_block)
+
+        start_index = int(args["deposits"].get("start_index", 0))
+        count = int(args["deposits"].get("count", 1))
+        interval = int(args["deposits"].get("interval_seconds", 1))
+        plan.print("starting generating and submitting deposits every {} second(s) from index {}, total amount {}"
+                   .format(interval, start_index, count))
+
+        # Use EL RPC of participant 0 by default for casting
+        net_params = args["network"]["network_params"]
+        # 0x00000000219ab540356cBB839Cbe05303d7705Fa is the mainnet/default DEPOSIT_CONTRACT_ADDRESS
+        # https://ethereum.github.io/consensus-specs/specs/phase0/deposit-contract/#configuration
+        deposit_address = net_params.get("deposit_contract_address", "0x00000000219ab540356cBB839Cbe05303d7705Fa")
+        plan.print("generating deposit-data with eth2-val-tools")
+        fork_version = "0x10000038"  # must be same with GENESIS_FORK_VERSION in nodes/anchor/config/config.yaml
+        deposits_json_artifact = deposit_bot.generate_deposits_with_eth2_val_tools(
+            plan,
+            eth_args.network_params.preregistered_validator_keys_mnemonic,
+            start_index,
+            count,
+            fork_version,
+            constants.OWNER_ADDRESS,
+        )
+        deposit_bot.start_deposit_bot(
+            plan,
+            el_rpc,
+            deposit_address,
+            genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
+            count=count,
+            interval_seconds=interval,
+            deposits_json_artifact=deposits_json_artifact,
+        )
