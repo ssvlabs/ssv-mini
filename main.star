@@ -158,31 +158,31 @@ def run(plan, args):
 
     # Optional: deposit submitter to help trigger EIP-6110 behavior
     if "deposits" in args and args["deposits"].get("enabled", False):
-        wait_for_block = int(args["deposits"].get("wait_for_block", 40))
-        plan.print("waiting for block 40 to start deposit generator")
+        wait_for_block = int(args["deposits"].get("wait_for_block", 0))
+        plan.print("waiting for block {} to start deposit generator".format(wait_for_block))
         blocks.wait_until_node_reached_block(plan, el_service_name, wait_for_block)
 
-        plan.print("starting deposit generator and submitter")
         start_index = int(args["deposits"].get("start_index", 0))
         count = int(args["deposits"].get("count", 1))
-        interval = int(args["deposits"].get("interval_seconds", 3))
+        interval = int(args["deposits"].get("interval_seconds", 1))
+        plan.print("starting generating and submitting deposits every {} second(s) from index {}, total amount {}"
+                   .format(interval, start_index, count))
+
         # Use EL RPC of participant 0 by default for casting
         net_params = args["network"]["network_params"]
+        # 0x00000000219ab540356cBB839Cbe05303d7705Fa is the mainnet/default DEPOSIT_CONTRACT_ADDRESS
+        # https://ethereum.github.io/consensus-specs/specs/phase0/deposit-contract/#configuration
         deposit_address = net_params.get("deposit_contract_address", "0x00000000219ab540356cBB839Cbe05303d7705Fa")
-        deposits_json_artifact = None
-        if "json_path" in args["deposits"]:
-            deposits_json_artifact = plan.upload_files(str(args["deposits"]["json_path"]))
-        else:
-            plan.print("no deposits.json provided; generating deposit-data with eth2-val-tools")
-            fork_version = "0x10000038"  # aligns with config.yaml
-            deposits_json_artifact = deposit_bot.generate_deposits_with_eth2_val_tools(
-                plan,
-                eth_args.network_params.preregistered_validator_keys_mnemonic,
-                start_index,
-                count,
-                fork_version,
-                constants.OWNER_ADDRESS,
-            )
+        plan.print("generating deposit-data with eth2-val-tools")
+        fork_version = "0x10000038"  # must be same with GENESIS_FORK_VERSION in nodes/anchor/config/config.yaml
+        deposits_json_artifact = deposit_bot.generate_deposits_with_eth2_val_tools(
+            plan,
+            eth_args.network_params.preregistered_validator_keys_mnemonic,
+            start_index,
+            count,
+            fork_version,
+            constants.OWNER_ADDRESS,
+        )
         deposit_bot.start_deposit_bot(
             plan,
             el_rpc,

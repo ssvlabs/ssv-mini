@@ -4,7 +4,7 @@ FOUNDRY_IMAGE = "ghcr.io/foundry-rs/foundry:latest"
 
 # Optionally supply a deposits JSON artifact containing an array of objects with
 # keys: pubkey, withdrawal_credentials, signature, deposit_data_root (0x-prefixed)
-def start_deposit_bot(plan, el_rpc_url, deposit_contract_address, private_key, count=4, interval_seconds=3, deposits_json_artifact=None):
+def start_deposit_bot(plan, el_rpc_url, deposit_contract_address, private_key, count=1, interval_seconds=1, deposits_json_artifact=None):
     """
     Starts a lightweight service that submits deposits from a JSON file using cast.
     The JSON file is expected to contain an array of objects with fields:
@@ -17,51 +17,38 @@ set -eu
 COUNT=${COUNT:-4}
 DEPOSITS_JSON=${DEPOSITS_JSON:-/deposits/deposits.json}
 
-if [ -f "$DEPOSITS_JSON" ]; then
-  echo "submitting deposits from JSON: $DEPOSITS_JSON (limit=$COUNT)"
-  normalize() {
-    case "$1" in
-      0x*|0X*) echo "$1" ;;
-      *) echo "0x$1" ;;
-    esac
-  }
-  JSON=$(tr -d ' \n\t' < "$DEPOSITS_JSON")
-  idx=1
-  while [ $idx -le $COUNT ]; do
-    PUBKEY=$(printf "%s" "$JSON" | grep -o '"pubkey":"[^"]*"' | sed 's/"pubkey":"//' | sed 's/"$//' | sed -n "${idx}p")
-    WITHDRAW=$(printf "%s" "$JSON" | grep -o '"withdrawal_credentials":"[^"]*"' | sed 's/"withdrawal_credentials":"//' | sed 's/"$//' | sed -n "${idx}p")
-    SIG=$(printf "%s" "$JSON" | grep -o '"signature":"[^"]*"' | sed 's/"signature":"//' | sed 's/"$//' | sed -n "${idx}p")
-    ROOT=$(printf "%s" "$JSON" | grep -o '"deposit_data_root":"[^"]*"' | sed 's/"deposit_data_root":"//' | sed 's/"$//' | sed -n "${idx}p")
-    [ -z "$PUBKEY" ] && break
-    PUBKEY=$(normalize "$PUBKEY"); WITHDRAW=$(normalize "$WITHDRAW"); SIG=$(normalize "$SIG"); ROOT=$(normalize "$ROOT")
-    echo "deposit: $PUBKEY"
-    cast send \
-      --rpc-url "$ETH_RPC_URL" \
-      --private-key "$PRIVATE_KEY" \
-      --value 32000000000000000000 \
-      "$DEPOSIT_CONTRACT" "deposit(bytes,bytes,bytes,bytes32)" "$PUBKEY" "$WITHDRAW" "$SIG" "$ROOT" || true
-    sleep "$INTERVAL"
-    idx=$((idx+1))
-  done
-else
-  echo "sending $COUNT dummy deposits to $DEPOSIT_CONTRACT"
-  i=0
-  # Sizes: pubkey=48 bytes, withdrawal_credentials=32, signature=96, root=32
-  PUBKEY=0x$(printf '11%.0s' $(seq 1 48))
-  WITHDRAW=0x$(printf '22%.0s' $(seq 1 32))
-  SIG=0x$(printf '33%.0s' $(seq 1 96))
-  ROOT=0x$(printf '44%.0s' $(seq 1 32))
-  while [ $i -lt $COUNT ]; do
-    echo "deposit #$i"
-    cast send \
-      --rpc-url "$ETH_RPC_URL" \
-      --private-key "$PRIVATE_KEY" \
-      --value 32000000000000000000 \
-      "$DEPOSIT_CONTRACT" "deposit(bytes,bytes,bytes,bytes32)" "$PUBKEY" "$WITHDRAW" "$SIG" "$ROOT" || true
-    i=$((i+1))
-    sleep "$INTERVAL"
-  done
+if [ ! -f "$DEPOSITS_JSON" ]; then
+  print "deposits file does not exist, exiting"
+  exit 1
 fi
+  
+echo "submitting deposits from JSON: $DEPOSITS_JSON (limit=$COUNT)"
+normalize() {
+case "$1" in
+  0x*|0X*) echo "$1" ;;
+  *) echo "0x$1" ;;
+esac
+}
+
+JSON=$(tr -d ' \n\t' < "$DEPOSITS_JSON")
+idx=1
+while [ $idx -le $COUNT ]; do
+  PUBKEY=$(printf "%s" "$JSON" | grep -o '"pubkey":"[^"]*"' | sed 's/"pubkey":"//' | sed 's/"$//' | sed -n "${idx}p")
+  WITHDRAW=$(printf "%s" "$JSON" | grep -o '"withdrawal_credentials":"[^"]*"' | sed 's/"withdrawal_credentials":"//' | sed 's/"$//' | sed -n "${idx}p")
+  SIG=$(printf "%s" "$JSON" | grep -o '"signature":"[^"]*"' | sed 's/"signature":"//' | sed 's/"$//' | sed -n "${idx}p")
+  ROOT=$(printf "%s" "$JSON" | grep -o '"deposit_data_root":"[^"]*"' | sed 's/"deposit_data_root":"//' | sed 's/"$//' | sed -n "${idx}p")
+  [ -z "$PUBKEY" ] && break
+  PUBKEY=$(normalize "$PUBKEY"); WITHDRAW=$(normalize "$WITHDRAW"); SIG=$(normalize "$SIG"); ROOT=$(normalize "$ROOT")
+  echo "deposit: $PUBKEY"
+  cast send \
+    --rpc-url "$ETH_RPC_URL" \
+    --private-key "$PRIVATE_KEY" \
+    --value 32000000000000000000 \
+    "$DEPOSIT_CONTRACT" "deposit(bytes,bytes,bytes,bytes32)" "$PUBKEY" "$WITHDRAW" "$SIG" "$ROOT" || true
+  sleep "$INTERVAL"
+  idx=$((idx+1))
+done
+
 echo "done"; tail -f /dev/null
 """
 
@@ -94,7 +81,7 @@ echo "done"; tail -f /dev/null
 
 def generate_deposits_with_eth2_val_tools(plan, mnemonic, start_index, count, fork_version, withdrawal_address):
     """
-    Uses ralexstokes/eth2-val-tools to generate deposit-data JSON for `count` validators
+    Uses protolambda/eth2-val-tools to generate deposit-data JSON for `count` validators
     from the given mnemonic. Returns a files artifact containing deposits.json.
     """
     SERVICE_NAME = "deposit-gen"

@@ -70,8 +70,8 @@ prepare:
 	@docker image inspect monitor >/dev/null 2>&1 || (cd ../ethereum2-monitor && docker build -t monitor . && echo "✅ Ethereum2 Monitor image built successfully.")
 	@echo "✅ All requirements are prepared, spinning up the enclave..."
 
-###### SCENARIOS ######
 
+###### SCENARIOS ######
 
 ### Majority fork
 
