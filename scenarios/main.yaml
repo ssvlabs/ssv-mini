@@ -33,9 +33,21 @@ network:
     electra_fork_epoch: 0
     fulu_fork_epoch: 100000000
     perfect_peerdas_enabled: false
-    
-    # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
-    # aligns with validator_count configuration under participants section
+
+    # Total number of validators pre-registered for the network.
+    #
+    # Must satisfy:
+    #
+    #   preregistered_validator_count
+    #     = Σ (validator_countᵢ * countᵢ)    # for all entries in network.participants
+    #       + ssv_validator_count
+    #
+    # Since SSV validators are not explicitly listed in network.participants,
+    # their count is implicitly derived as:
+    #
+    #   ssv_validator_count
+    #     = preregistered_validator_count
+    #       - Σ (validator_countᵢ * countᵢ)
     preregistered_validator_count: 74
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
     # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration

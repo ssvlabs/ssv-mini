@@ -64,7 +64,7 @@ kurtosis service logs -f localnet el-1-geth-lighthouse
 ```
 
 ### Configuration Management
-Network configuration is controlled via `params.yaml`:
+Network configuration is controlled via `.yaml` scenarios in `scenarios/`:
 - Node counts (`nodes.ssv.count`, `nodes.anchor.count`)
 - Validator distribution (`network.participants[].validator_count`)
 - Monitoring (`monitor.enabled`)
@@ -101,6 +101,12 @@ Network configuration is controlled via `params.yaml`:
    - Real-time validator performance tracking
    - Grafana dashboards and metrics collection
 
+6. **Scenarios** (`scenarios/`):
+    - Scenarios to reproduce in the local network
+    - Contain happy flow and various cases we want to test
+    - Scenarios are configured with `.yaml` files
+    - Scenarios are documented in `SCENARIOS.md`
+
 ### Data Flow and Dependencies
 
 1. **Network Initialization**: Ethereum network starts → Smart contracts deploy
@@ -111,7 +117,7 @@ Network configuration is controlled via `params.yaml`:
 
 ### Critical Configuration Files
 
-- `params.yaml`: Main network configuration (node counts, validators, features, ports)
+- `scenarios/main.yaml`: Main network configuration (node counts, validators, features, ports)
 - `main.star`: Main orchestration logic using Kurtosis framework
 - `nodes/ssv/config.yml.tmpl`: SSV node configuration template with template variables
 - `nodes/anchor/config/config.yaml`: Anchor consensus client configuration
@@ -148,7 +154,7 @@ The following ports are exposed as container ports for internal Kubernetes servi
 - **Ethereum CL API**: 30020
 
 ### Configuration Files
-- `params.yaml`: Kurtosis port configuration
+- `scenarios/main.yaml`: Kurtosis port configuration
 - `kubernetes/chart/ssv-mini/values.yaml`: Helm chart port configuration
 
 ### Kubernetes Service Access
