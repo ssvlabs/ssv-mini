@@ -1,0 +1,64 @@
+# https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
+
+network:
+  participants:
+  - el_type: geth
+    el_image: ethereum/client-go:v1.15.2
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v7.0.0
+    validator_count: 16
+    count: 6
+  - el_type: geth
+    el_image: geth-misconfigured
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v7.0.0
+    validator_count: 16
+    count: 10
+
+  additional_services:
+    - dora # Helps to see validators are working
+
+  network_params:
+    # this is 'kurtosis' network ID, which is a default network. With this configuration CL /spec endpoint will return CONFIG_NAME=testnet
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 1
+    fulu_fork_epoch: 100000000
+    perfect_peerdas_enabled: true
+    deposit_contract_address: "0x00000000219ab540356cBB839Cbe05303d7705Fa"
+
+    # 16 validators * 16(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
+    preregistered_validator_count: 266
+    # NOTE: changes the number of slots in the epoch and potentially some other network settings.
+    # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration
+    # preset: minimal
+
+  port_publisher:
+    cl:
+      enabled: true
+
+monitor:
+  enabled: false
+
+nodes:
+  ssv:
+    count: 4
+    eth_node_indices: [0,1,2,-1]
+  anchor:
+    count: 0
+
+# Docker images configuration
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v0.3.1" # if you want to use locally build anchor change to `node/anchor`
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  foundry: "localssv/ssv-network"
+
+deposits:
+  enabled: true
+  start_index: 0
+  count: 1
+  interval_seconds: 1
+  wait_for_block: 40 # should be enough to happen in epoch 1

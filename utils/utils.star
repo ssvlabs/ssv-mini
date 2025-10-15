@@ -35,8 +35,8 @@ def get_foundry_image_spec(args):
         build_file="Dockerfile.contract",
     )
 
-def get_network_attributes(all_participants):
-    el_context = all_participants[0].el_context
+def get_network_attributes(participant):
+    el_context = participant.el_context
     el_service_name = el_context.service_name
     el_ip_addr = el_context.ip_addr
     el_ws_port = el_context.ws_port_num
@@ -45,7 +45,7 @@ def get_network_attributes(all_participants):
     el_rpc_uri = "http://{0}:{1}".format(el_ip_addr, el_rpc_port)
     el_ws_uri = "ws://{0}:{1}".format(el_ip_addr, el_ws_port)
 
-    cl_context = all_participants[0].cl_context
+    cl_context = participant.cl_context
     cl_service_name = cl_context.beacon_service_name
     cl_ip_addr = cl_context.ip_addr
     cl_http_port_num = cl_context.http_port
