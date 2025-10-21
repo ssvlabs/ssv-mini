@@ -17,8 +17,8 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 3
-    perfect_peerdas_enabled: true
+    # fulu_fork_epoch: 9999
+    perfect_peerdas_enabled: false
 
     # 74 = 32 validators * 2(number of el/cl nodes) + 10(running on SSV/Anchor nodes) + 10(unregistered validators for test framework flow usage)
     # aligns with validator_count configuration under participants section
@@ -47,3 +47,5 @@ images:
 
 extra_params: 
   unregistered_validator_count: 10
+  # Password to use for all unregistered EIP-2335 keystores (Lighthouse-generated)
+  unregistered_validator_password: "aetheria"

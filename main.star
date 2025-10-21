@@ -76,12 +76,13 @@ def run(plan, args):
     # Additional unregistered validators
     unregistered_start_index = non_ssv_validators + ssv_validators  # start from where registered validators end
     plan.print("Generating unregistered validator keystores starting from index: " + str(unregistered_start_index))
-    unregistered_keystore_files = validator_keygen.generate_validator_keystores(
+    uniform_unregistered_password = args.get("extra_params", {}).get("unregistered_validator_password", "password")
+    unregistered_keystore_files = validator_keygen.generate_unregistered_validator_keystores_uniform(
         plan,
         eth_args.network_params.preregistered_validator_keys_mnemonic,
         unregistered_start_index,
-        unregistered_validators, 
-        register=False,
+        unregistered_validators,
+        uniform_unregistered_password,
     )
     
     # Generate public/private keypair for every operator we are going to deploy

@@ -42,7 +42,7 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
     
     anchor keysplit manual \
       --keystore-path "$KEYSTORE_PATH" \
-      --password "$PASSWORD" \
+      --password="$PASSWORD" \
       --owner "$OWNER_ADDRESS" \
       --output-path "$TEMP_OUTPUT" \
       --operators "$OPERATOR_IDS" \
