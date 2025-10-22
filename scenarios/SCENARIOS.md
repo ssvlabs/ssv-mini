@@ -14,6 +14,8 @@ that nothing is broken and the ssv network works as expected.
 
 ### [Majority fork](./majority-fork.yaml)
 
+[Rationale](./MAJORITY_FORK.md)
+
 This scenario simulates the Pectra fork incident on Holesky and Sepolia networks.
 Since `ethpandaops/ethereum-package` passes `deposit_contract_address` to all nodes,
 this scenario misconfigures the `geth` using an image 
