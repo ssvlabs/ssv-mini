@@ -23,9 +23,10 @@ with modified source code instead of misconfiguring it in the params file.
 
 The scenario causes a network fork and triggering ssv nodes' protection, 
 so ssv nodes' logs should not process attester/sync committee duties and should contain some of the following logs:
-- `beacon vote target root doesn't satisfy slashing protection data`
-- `beacon vote source epoch doesn't satisfy slashing protection data`
-- `beacon vote target epoch doesn't satisfy slashing protection data`
+- `unexpected source epoch`
+- `unexpected target epoch`
+- `unexpected source root`
+- `unexpected target root`
 
 #### Running
 
