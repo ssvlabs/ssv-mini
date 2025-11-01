@@ -1,5 +1,5 @@
 ENCLAVE_NAME=localnet
-PARAMS_FILE=params.yaml
+PARAMS_FILE=./scenarios/main.yaml
 SSV_NODE_COUNT?=4
 ENCLAVE_NAME?=localnet
 SSV_COMMIT?=stage
@@ -69,3 +69,43 @@ prepare:
 	fi
 	@docker image inspect monitor >/dev/null 2>&1 || (cd ../ethereum2-monitor && docker build -t monitor . && echo "✅ Ethereum2 Monitor image built successfully.")
 	@echo "✅ All requirements are prepared, spinning up the enclave..."
+
+
+###### SCENARIOS ######
+
+### Majority fork
+
+PARAMS_FILE_MAJORITY_FORK=./scenarios/majority-fork.yaml
+
+# Prepare images for the majority fork. Run the `prepare` step and build a misconfigured geth image.
+.PHONY: prepare-majority-fork
+prepare-majority-fork: prepare
+	@set -e; \
+	if [ ! -d "../geth-misconfigured" ]; then \
+	  git clone https://github.com/ethereum/go-ethereum.git ../geth-misconfigured; \
+	fi; \
+	cd ../geth-misconfigured; \
+	git fetch --all --tags; \
+	git checkout v1.15.2
+
+	@set -e; \
+	FILE="../geth-misconfigured/core/state_processor.go"; \
+	test -f "$$FILE"; \
+	cp "$$FILE" "$$FILE.bak"; \
+	perl -0777 -pi -e 's/if\s+log\.Address\s*==\s*config\.DepositContractAddress/if log.Address == (common.Address{})/g' "$$FILE"; \
+	grep -n "if log.Address == (common.Address{})" "$$FILE" >/dev/null || { echo "❌ Replacement not found in $$FILE"; exit 1; }; \
+	echo "✅ Replacement applied in $$FILE"
+
+	@cd ../geth-misconfigured && docker build -t geth-misconfigured .
+
+# Run the majority fork scenario without prepare: Uses existing local repos and Docker images (for custom branches/versions).
+# It must be prepared manually until its prepare step is implemented. Make sure all images are ready.
+.PHONY: run-majority-fork
+run-majority-fork:
+	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE_MAJORITY_FORK})"
+
+# Run the majority fork scenario with prepare:
+# Downloads latest repos (ssv stage, anchor unstable, ethereum2-monitor main, go-ethereum) and builds Docker images
+.PHONY: run-majority-fork-with-prepare
+run-majority-fork-with-prepare: prepare
+	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE_MAJORITY_FORK})"
