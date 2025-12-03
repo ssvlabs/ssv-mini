@@ -34,7 +34,7 @@ def generate_operator_keys(plan, index):
     plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "anchor keygen --force"],
+            command=["/bin/sh", "-c", "anchor keygen --force --network hoodi"],
         ),
     )
 
