@@ -66,11 +66,12 @@ def run(plan, args):
     eth_args = input_parser.input_parser(plan, network_args)
     
     # Generate new keystore files
+    # Only generate keystores for SSV validators (not including unregistered ones)
     keystore_files = validator_keygen.generate_validator_keystores(
-        plan, 
-        eth_args.network_params.preregistered_validator_keys_mnemonic, 
-        non_ssv_validators, 
-        total_validators - non_ssv_validators
+        plan,
+        eth_args.network_params.preregistered_validator_keys_mnemonic,
+        non_ssv_validators,
+        ssv_validators  # Changed from total_validators - non_ssv_validators
     )
 
     # Additional unregistered validators
