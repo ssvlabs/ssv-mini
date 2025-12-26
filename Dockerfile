@@ -1,6 +1,5 @@
 FROM fedora:39
 
-# Install necessary packages
 RUN dnf update -y && \
     dnf install -y \
     curl \
