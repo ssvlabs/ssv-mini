@@ -61,8 +61,7 @@ def anchor_testnet_artifact(plan):
     base_path = "../nodes/anchor/config"
     config = Directory(
         artifact_names = [
-            plan.upload_files(base_path + "/config.yaml"),
-            plan.upload_files(base_path + "/deposit_contract_block.txt"),
+            "el_cl_genesis_data",
             plan.upload_files(base_path + "/ssv_boot_enr.yaml"),
             plan.upload_files(base_path + "/ssv_contract_address.txt"),
             plan.upload_files(base_path + "/ssv_contract_block.txt"),
@@ -76,7 +75,7 @@ def read_enr_from_file(plan, service_name):
     result = plan.exec(
         service_name = service_name,
         recipe = ExecRecipe(
-            command = ["/bin/sh", "-c", "cat /usr/local/bin/data/network/enr.dat"]
+            command = ["/bin/sh", "-c", "cat /opt/data/network/enr.dat"]
         )
     )
     

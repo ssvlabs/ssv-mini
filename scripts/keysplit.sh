@@ -35,14 +35,13 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
   if [ -d "$VALIDATOR_DIR" ]; then
     VALIDATOR_KEY=$(basename "$VALIDATOR_DIR")
     echo "Processing validator key: $VALIDATOR_KEY with nonce: $NONCE"
-    
-    PASSWORD=$(cat ../keystores/secrets/$VALIDATOR_KEY)
+
     KEYSTORE_PATH="$VALIDATOR_DIR/voting-keystore.json"
     TEMP_OUTPUT="$TEMP_DIR/$VALIDATOR_KEY-out.json"
     
     anchor keysplit manual \
-      --keystore-path "$KEYSTORE_PATH" \
-      --password "$PASSWORD" \
+      --keystore-paths "$KEYSTORE_PATH" \
+      --password-file "../keystores/secrets/$VALIDATOR_KEY" \
       --owner "$OWNER_ADDRESS" \
       --output-path "$TEMP_OUTPUT" \
       --operators "$OPERATOR_IDS" \

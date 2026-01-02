@@ -31,7 +31,7 @@ def run(plan, args):
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
         fail("invalid cluster size: ", str(ssv_node_count + anchor_node_count))
 
-    if ssv_node_count == 0 and args["observability"]["monitor"]["enabled"]:
+    if ssv_node_count == 0 and args["monitor"]["enabled"]:
         fail("SSV Node count is equal to '0'. Monitor must not be enabled")
 
     plan.print("launching blockchain network")
