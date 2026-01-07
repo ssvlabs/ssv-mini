@@ -53,7 +53,7 @@ nodes:
 # Docker images configuration
 images:
   ssv: "node/ssv"
-  anchor: "anchor/anchor:v1.2.0" # if you want to use locally build anchor change to `node/anchor`
+  anchor: "sigp/anchor:v1.2.0" # if you want to use locally build anchor change to `node/anchor`
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
