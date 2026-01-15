@@ -58,7 +58,7 @@ nodes:
 images:
   ssv: "node/ssv"
   anchor: "sigp/anchor:v0.3.1" # if you want to use locally build anchor change to `node/anchor`
-  monitor: "monitor"
+  monitor: "ssvlabs/ethereum2-monitor:latest"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
   foundry: "localssv/ssv-network" 

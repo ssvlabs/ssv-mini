@@ -61,11 +61,4 @@ prepare:
 		cd ../anchor && git fetch && git checkout unstable; \
 	fi
 	@docker image inspect node/anchor >/dev/null 2>&1 || (cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor . && echo "✅ Anchor image built successfully.")
-	@if [ ! -d "../ethereum2-monitor" ]; then \
-		git clone https://github.com/ssvlabs/ethereum2-monitor.git ../ethereum2-monitor; \
-	else \
-		echo "✅ ethereum2-monitor repo already cloned."; \
-		cd ../ethereum2-monitor && git fetch && git checkout main; \
-	fi
-	@docker image inspect monitor >/dev/null 2>&1 || (cd ../ethereum2-monitor && docker build -t monitor . && echo "✅ Ethereum2 Monitor image built successfully.")
 	@echo "✅ All requirements are prepared, spinning up the enclave..."
