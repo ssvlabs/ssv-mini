@@ -3,7 +3,7 @@
 network:
   participants:
   - el_type: geth
-    el_image: ethereum/client-go:v1.15.10
+    el_image: ethereum/client-go:v1.16.7
     cl_type: lighthouse
     # ethpandaops/ethereum-package's recent update requires using the `perfect_peerdas_enabled` option
     # with not less than 16 participants, and disabling `perfect_peerdas_enabled` requires setting the `supernode` flag
@@ -12,13 +12,8 @@ network:
     # ssv-mini's main scenario doesn't require so many participants, so we use the `supernode` option. However,
     # ethpandaops/ethereum-package uses the new `--supernode` flag instead of the old `--subscribe-all-data-column-subnets` for lighthouse
     # (https://github.com/ethpandaops/ethereum-package/blob/4026af29de7267898e91e19bb269f26692a84e42/src/cl/lighthouse/lighthouse_launcher.star#L224).
-    # `--supernode` is the new flag added in v8.0.0-rc.1, but it's not included in any stable release yet.
-    # `--subscribe-all-data-column-subnets` is the old flag that will eventually be deprecated but still works on v8.0.0-rc.1
-    # (https://github.com/sigp/lighthouse/pull/8083),
-    #
-    # Therefore, we have to use the RC version until lighthouse releases a stable version with the support
-    # of the `--supernode` flag, then the version must be updated.
-    cl_image: sigp/lighthouse:v8.0.0-rc.1
+    # `--supernode` is the new flag added in v8.0.0.
+    cl_image: sigp/lighthouse:v8.0.1
     validator_count: 32
     count: 2
     supernode: true
@@ -31,7 +26,7 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 100000000
+    fulu_fork_epoch: 0
     perfect_peerdas_enabled: false
     
     # 74 = 32 validators * 2(number of el/cl nodes) + 10 (running on SSV/Anchor nodes)
@@ -39,6 +34,7 @@ network:
     preregistered_validator_count: 74
     # NOTE: changes the number of slots in the epoch and potentially some other network settings.
     # docs: https://github.com/ethpandaops/ethereum-package/blob/main/README.md#configuration
+    # Supported by Anchor.
     # preset: minimal
 
   port_publisher:
@@ -50,15 +46,15 @@ monitor:
 
 nodes:
   ssv:
-    count: 4
+    count: 2
   anchor:
-    count: 0
+    count: 2
 
 # Docker images configuration
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v0.3.1" # if you want to use locally build anchor change to `node/anchor`
+  anchor: "sigp/anchor:v1.2.0" # if you want to use locally build anchor change to `node/anchor`
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
-  foundry: "localssv/ssv-network" 
+  foundry: "localssv/ssv-network"

@@ -10,10 +10,13 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
     name = "anchor-node-0"
     files = get_anchor_files(plan, 0, key_pems[0], config)
     command_arr = [
-        "node", "--testnet-dir", "testnet", "--beacon-nodes", cl_url,
-        "--execution-rpc", el_rpc, "--execution-ws", el_ws, "--datadir", "data",
+        "node", "--testnet-dir", "/opt/testnet", "--beacon-nodes", cl_url,
+        "--execution-rpc", el_rpc, "--execution-ws", el_ws, "--datadir", "/opt/data",
         "--enr-address", IP_PLACEHOLDER, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
-        "--enr-quic-port", "9101", "--port", "9100", "--discovery-port", "9100", "--quic-port", "9101"
+        "--enr-quic-port", "9101", "--port", "9100", "--discovery-port", "9100", "--quic-port", "9101",
+        "--logfile-max-number", "0", "--debug-level", "debug",
+        # mitigation of https://github.com/sigp/anchor/issues/765
+        "--subscribe-all-subnets"
     ]
 
     plan.add_service(
@@ -27,7 +30,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
             # need to wait for the node to get its id and write out its enr
             ready_conditions =  ReadyCondition(
                 recipe = ExecRecipe(
-                    command = ["/bin/sh", "-c", "test -f /usr/local/bin/data/network/enr.dat"]
+                    command = ["/bin/sh", "-c", "test -f /opt/data/network/enr.dat"]
                 ),
                 field = "code",
                 assertion = "==",
@@ -64,15 +67,15 @@ def get_anchor_files(plan, index, key_pem, config):
     if index == 0:
         # this is the "main" bootnode
         return {
-            "/usr/local/bin/data": key_pem,
-            "/usr/local/bin/data/network": plan.upload_files("./config/key"),
-            "/usr/local/bin/testnet": config
+            "/opt/data": key_pem,
+            "/opt/network": plan.upload_files("./config/key"),
+            "/opt/testnet": config
         }
     else:
         # this is a normal node
         return {
-            "/usr/local/bin/data": key_pem,
-            "/usr/local/bin/testnet": config
+            "/opt/data": key_pem,
+            "/opt/testnet": config
         }
 
 

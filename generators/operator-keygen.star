@@ -34,12 +34,12 @@ def generate_operator_keys(plan, index):
     plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "anchor keygen --force"],
+            command=["/bin/sh", "-c", "anchor keygen --force --datadir /root/.anchor"],
         ),
     )
 
     # Read the public and private key files from the correct output directory
-    key_dir = "/root/.anchor/hoodi/"
+    key_dir = "/root/.anchor/"
 
     public_key_result = plan.exec(
         service_name=constants.ANCHOR_CLI_SERVICE_NAME,
