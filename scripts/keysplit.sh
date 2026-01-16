@@ -22,7 +22,7 @@ OPERATOR_IDS=$(cat ../operator_data/operator_data.json | jq -r '.operators[].id'
 PUBLIC_KEYS=""
 for ID in $(echo $OPERATOR_IDS | tr ',' ' '); do
   KEY=$(cat ../operator_data/operator_data.json | jq -r ".operators[] | select(.id == $ID) | .publicKey")
-  
+
   if [ -z "$PUBLIC_KEYS" ]; then
     PUBLIC_KEYS="$KEY"
   else
@@ -48,12 +48,12 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
       --operators "$OPERATOR_IDS" \
       --nonce "$NONCE" \
       --public-keys "$PUBLIC_KEYS" > /dev/null
-      
+
     if [ $? -eq 0 ] && [ -f "$TEMP_OUTPUT" ]; then
       # Extract the share from the temp file and add to our array
       SHARE=$(jq -c '.shares[0]' "$TEMP_OUTPUT")
       FINAL_SHARES+=("$SHARE")
-      
+
       # Increment the nonce for the next run
       NONCE=$((NONCE + 1))
     else
