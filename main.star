@@ -27,6 +27,8 @@ def run(plan, args):
     postgres_image = utils.get_postgres_image(args)
     redis_image = utils.get_redis_image(args)
     foundry_image_spec = utils.get_foundry_image_spec(args)
+    eth_val_tools_image = utils.get_eth_val_tools_image(args)
+    lighthouse_image = utils.get_lighthouse_image(args)
 
     plan.print("validating configurations...")
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
@@ -71,7 +73,8 @@ def run(plan, args):
         plan,
         eth_args.network_params.preregistered_validator_keys_mnemonic,
         non_ssv_validators,
-        ssv_validators  # Changed from total_validators - non_ssv_validators
+        ssv_validators,  # Changed from total_validators - non_ssv_validators
+        eth_val_tools_image,
     )
 
     # Additional unregistered validators
@@ -84,6 +87,7 @@ def run(plan, args):
         unregistered_start_index,
         unregistered_validators,
         uniform_unregistered_password,
+        lighthouse_image,
     )
     
     # Generate public/private keypair for every operator we are going to deploy

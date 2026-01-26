@@ -6,9 +6,6 @@ PRYSM_PASSWORD_FILEPATH_ON_GENERATOR = "/tmp/prysm-password.txt"
 
 KEYSTORES_GENERATION_TOOL_NAME = "/app/eth2-val-tools"
 
-ETH_VAL_TOOLS_IMAGE = "protolambda/eth2-val-tools:latest"
-LIGHTHOUSE_IMAGE = "sigp/lighthouse:v7.1.0"
-
 SUCCESSFUL_EXEC_CMD_EXIT_CODE = 0
 
 RAW_KEYS_DIRNAME = "keys"
@@ -30,24 +27,23 @@ ENTRYPOINT_ARGS = [
     "99999",
 ]
 
-SERVICE_CONFIG = ServiceConfig(
-    image=ETH_VAL_TOOLS_IMAGE,
-    entrypoint=ENTRYPOINT_ARGS,
-    files={},
-)
-
 ARTIFACT_PREFIX = 'ssv-validators'
 
 
-def generate_validator_keystores(plan, mnemonic, start_index, validator_count, register=True):
+def generate_validator_keystores(plan, mnemonic, start_index, validator_count, eth_val_tools_image, register=True):
     if register:
         service_name = SERVICE_NAME_REGSITER
         output_dirpath = NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR
     else:
         service_name = SERVICE_NAME_UNREGSITER
         output_dirpath = NODE_UNREGISTERED_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR
-    
-    plan.add_service(service_name, SERVICE_CONFIG)
+
+    service_config = ServiceConfig(
+        image=eth_val_tools_image,
+        entrypoint=ENTRYPOINT_ARGS,
+        files={},
+    )
+    plan.add_service(service_name, service_config)
 
     stop_index = start_index + validator_count
 
@@ -99,13 +95,13 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count, r
     return keystore_files
 
 
-def generate_unregistered_validator_keystores_uniform(plan, mnemonic, start_index, validator_count, password):
+def generate_unregistered_validator_keystores_uniform(plan, mnemonic, start_index, validator_count, password, lighthouse_image):
     service_name = SERVICE_NAME_UNREGSITER
     output_dirpath = NODE_UNREGISTERED_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR
 
     # Start a dormant Lighthouse container to generate EIP-2335 keystores with a uniform password
     plan.add_service(service_name, ServiceConfig(
-        image=LIGHTHOUSE_IMAGE,
+        image=lighthouse_image,
         entrypoint=["tail", "-f", "/dev/null"],
         env_vars={
             "MNEMONIC": mnemonic,

@@ -7,19 +7,12 @@ SSV_NODE_COUNT ?= 4
 SSV_COMMIT ?= stage
 MONITOR_ENABLED ?= false
 
-# Git SSH settings (used for private repos; safe for public too)
-GIT_SSH_COMMAND ?= ssh -F /dev/null -o StrictHostKeyChecking=accept-new
-
 # Repos and refs (override as needed)
 SSV_REPO ?= https://github.com/ssvlabs/ssv.git
 SSV_REF  ?= $(SSV_COMMIT)
 
 ANCHOR_REPO ?= https://github.com/sigp/anchor.git
 ANCHOR_REF  ?= unstable
-
-# Private repo: use SSH
-E2M_REPO ?= git@github.com:ssvlabs/ethereum2-monitor.git
-E2M_REF  ?= main
 
 default: run-with-prepare
 
@@ -86,23 +79,5 @@ prepare:
 		git pull origin "$(ANCHOR_REF)"; \
 	fi
 	@docker image inspect node/anchor >/dev/null 2>&1 || (cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor . && echo "✅ Anchor image built successfully.")
-
-	# ethereum2-monitor (private → use SSH) - only if MONITOR_ENABLED=true
-	@if [ "$(MONITOR_ENABLED)" = "true" ]; then \
-		if [ ! -d "../ethereum2-monitor" ]; then \
-			echo "Cloning ethereum2-monitor..."; \
-			GIT_SSH_COMMAND="$(GIT_SSH_COMMAND)" git clone "$(E2M_REPO)" ../ethereum2-monitor; \
-		else \
-			echo "✅ ethereum2-monitor repo already cloned."; \
-			cd ../ethereum2-monitor && \
-			git remote set-url origin "$(E2M_REPO)" && \
-			GIT_SSH_COMMAND="$(GIT_SSH_COMMAND)" git fetch --all --tags && \
-			GIT_SSH_COMMAND="$(GIT_SSH_COMMAND)" git checkout "$(E2M_REF)" && \
-			GIT_SSH_COMMAND="$(GIT_SSH_COMMAND)" git pull origin "$(E2M_REF)"; \
-		fi; \
-		docker image inspect monitor >/dev/null 2>&1 || (cd ../ethereum2-monitor && docker build -t monitor . && echo "✅ Ethereum2 Monitor image built successfully."); \
-	else \
-		echo "⏭️  Skipping ethereum2-monitor (MONITOR_ENABLED=$(MONITOR_ENABLED))"; \
-	fi
 
 	@echo "✅ All requirements are prepared, spinning up the enclave..."
