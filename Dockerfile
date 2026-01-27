@@ -16,8 +16,10 @@ RUN dnf update -y && \
     dnf install -y docker-ce-cli && \
     dnf clean all
 
-# Install Kurtosis CLI (1.15.0+ required for publish_udp support in ethereum-package)
-RUN curl -L "https://github.com/kurtosis-tech/kurtosis/releases/download/1.15.2/kurtosis-cli_1.15.2_linux_amd64.tar.gz" | tar -xz -C /usr/local/bin kurtosis
+# Install Kurtosis CLI via RPM repository
+RUN echo -e '[kurtosis]\nname=Kurtosis\nbaseurl=https://yum.fury.io/kurtosis-tech/\nenabled=1\ngpgcheck=0' | tee /etc/yum.repos.d/kurtosis.repo && \
+    dnf install -y kurtosis-cli && \
+    dnf clean all
 
 # Set working directory
 WORKDIR /app
