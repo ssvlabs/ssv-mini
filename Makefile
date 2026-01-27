@@ -5,7 +5,6 @@ ENCLAVE_NAME ?= localnet
 PARAMS_FILE ?= params.yaml
 SSV_NODE_COUNT ?= 4
 SSV_COMMIT ?= stage
-MONITOR_ENABLED ?= false
 
 # Repos and refs (override as needed)
 SSV_REPO ?= https://github.com/ssvlabs/ssv.git
