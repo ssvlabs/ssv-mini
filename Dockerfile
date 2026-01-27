@@ -1,5 +1,8 @@
 FROM fedora:39
 
+# NOTE: ethereum-package uses ServiceConfig(publish_udp=...). This requires Kurtosis engine >= 1.15.2.
+# If you upgrade Kurtosis, restart the engine to pick up the new Starlark API:
+#   kurtosis engine restart
 # Install necessary packages
 RUN dnf update -y && \
     dnf install -y \

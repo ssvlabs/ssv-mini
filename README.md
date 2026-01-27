@@ -3,7 +3,23 @@ Kurtosis devnet for running local SSV networks.
 
 ## Prerequisites
 - Docker
-- [Kurtosis](https://docs.kurtosis.com/install)
+- [Kurtosis](https://docs.kurtosis.com/install) (>= 1.15.2)
+
+### Troubleshooting
+
+If you see:
+
+```
+ServiceConfig: unexpected keyword argument "publish_udp"
+```
+
+Your Kurtosis engine is too old. Upgrade Kurtosis to >= 1.15.2 and restart the engine:
+
+```bash
+kurtosis engine restart
+```
+
+NOTE: Restarting the engine will stop running enclaves/services.
 
 ## Quick Start (Recommended)
 The easiest way to get started is using the automated setup with the `prepare` command:

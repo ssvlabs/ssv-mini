@@ -5,6 +5,7 @@ ENCLAVE_NAME ?= localnet
 PARAMS_FILE ?= params.yaml
 SSV_NODE_COUNT ?= 4
 SSV_COMMIT ?= stage
+KURTOSIS_MIN_VERSION ?= 1.15.2
 
 # Repos and refs (override as needed)
 SSV_REPO ?= https://github.com/ssvlabs/ssv.git
@@ -15,23 +16,26 @@ ANCHOR_REF  ?= unstable
 
 default: run-with-prepare
 
-.PHONY: default run-with-prepare run reset-with-prepare reset clean show restart-ssv-nodes prepare
+.PHONY: default run-with-prepare run reset-with-prepare reset clean show restart-ssv-nodes prepare check-kurtosis
+
+check-kurtosis:
+	@bash scripts/check-kurtosis-version.sh "$(KURTOSIS_MIN_VERSION)"
 
 # Run with prepare: clone/update repos and build images
-run-with-prepare: prepare
+run-with-prepare: check-kurtosis prepare
 	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
 
 # Run without prepare: use existing repos and images
-run:
+run: check-kurtosis
 	kurtosis run --verbosity DETAILED --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
 
 # Reset with prepare: clean and run fresh
-reset-with-prepare: prepare
+reset-with-prepare: check-kurtosis prepare
 	kurtosis clean -a
 	kurtosis run --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
 
 # Reset without prepare: clean and run with existing assets
-reset:
+reset: check-kurtosis
 	kurtosis clean -a
 	kurtosis run --enclave ${ENCLAVE_NAME} . "$$(cat ${PARAMS_FILE})"
 
