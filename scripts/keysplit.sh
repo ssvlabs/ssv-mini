@@ -22,7 +22,7 @@ OPERATOR_IDS=$(cat ../operator_data/operator_data.json | jq -r '.operators[].id'
 PUBLIC_KEYS=""
 for ID in $(echo $OPERATOR_IDS | tr ',' ' '); do
   KEY=$(cat ../operator_data/operator_data.json | jq -r ".operators[] | select(.id == $ID) | .publicKey")
-  
+
   if [ -z "$PUBLIC_KEYS" ]; then
     PUBLIC_KEYS="$KEY"
   else
@@ -37,22 +37,23 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
     echo "Processing validator key: $VALIDATOR_KEY with nonce: $NONCE"
 
     KEYSTORE_PATH="$VALIDATOR_DIR/voting-keystore.json"
+    PASSWORD_FILE="../keystores/secrets/$VALIDATOR_KEY"
     TEMP_OUTPUT="$TEMP_DIR/$VALIDATOR_KEY-out.json"
-    
+
     anchor keysplit manual \
       --keystore-paths "$KEYSTORE_PATH" \
-      --password-file "../keystores/secrets/$VALIDATOR_KEY" \
+      --password-file "$PASSWORD_FILE" \
       --owner "$OWNER_ADDRESS" \
       --output-path "$TEMP_OUTPUT" \
       --operators "$OPERATOR_IDS" \
       --nonce "$NONCE" \
       --public-keys "$PUBLIC_KEYS" > /dev/null
-      
+
     if [ $? -eq 0 ] && [ -f "$TEMP_OUTPUT" ]; then
       # Extract the share from the temp file and add to our array
       SHARE=$(jq -c '.shares[0]' "$TEMP_OUTPUT")
       FINAL_SHARES+=("$SHARE")
-      
+
       # Increment the nonce for the next run
       NONCE=$((NONCE + 1))
     else

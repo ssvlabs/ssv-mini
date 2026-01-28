@@ -17,6 +17,7 @@ cluster = import_module("./nodes/cluster.star")
 def run(plan, args):
     plan.print("validating input")
     ssv_node_count = args["nodes"]["ssv"]["count"]
+    network_args = args["network"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
     
     # Retrieve all Docker images at the start
@@ -26,6 +27,8 @@ def run(plan, args):
     postgres_image = utils.get_postgres_image(args)
     redis_image = utils.get_redis_image(args)
     foundry_image_spec = utils.get_foundry_image_spec(args)
+    eth_val_tools_image = utils.get_eth_val_tools_image(args)
+    lighthouse_image = utils.get_lighthouse_image(args)
 
     plan.print("validating configurations...")
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
@@ -34,8 +37,22 @@ def run(plan, args):
     if ssv_node_count == 0 and args["monitor"]["enabled"]:
         fail("SSV Node count is equal to '0'. Monitor must not be enabled")
 
+    # Validators distribution
+    total_validators = network_args["network_params"]["preregistered_validator_count"]
+    non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
+    unregistered_validators = args["extra_params"]["unregistered_validator_count"]
+    ssv_validators = total_validators - non_ssv_validators - unregistered_validators
+    plan.print("Validators distribution: total={}, non-SSV={}, SSV={}, unregistered={}".format(
+        total_validators, non_ssv_validators, ssv_validators, unregistered_validators
+    ))
+
+    # Validate validators distribution
+    if total_validators < non_ssv_validators + ssv_validators + unregistered_validators:
+        fail("total number of validators is less than the sum of non-SSV, SSV and unregistered validators, check your validator distribution configuration")
+
+
     plan.print("launching blockchain network")
-    network_args = args["network"]
+
     ethereum_network = ethereum_package.run(plan, network_args)
     
     plan.print("network launched. Network output: " + json.indent(json.encode(ethereum_network)))
@@ -48,19 +65,31 @@ def run(plan, args):
     plan.print("deploying SSV smart contracts")
     deployer.deploy(plan, el_rpc, genesis_constants, foundry_image_spec)
 
-    non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
-    total_validators = network_args["network_params"]["preregistered_validator_count"]
-    
     eth_args = input_parser.input_parser(plan, network_args)
     
     # Generate new keystore files
+    # Only generate keystores for SSV validators (not including unregistered ones)
     keystore_files = validator_keygen.generate_validator_keystores(
-        plan, 
-        eth_args.network_params.preregistered_validator_keys_mnemonic, 
-        non_ssv_validators, 
-        total_validators - non_ssv_validators
+        plan,
+        eth_args.network_params.preregistered_validator_keys_mnemonic,
+        non_ssv_validators,
+        ssv_validators,  # Changed from total_validators - non_ssv_validators
+        eth_val_tools_image,
     )
 
+    # Additional unregistered validators
+    unregistered_start_index = non_ssv_validators + ssv_validators  # start from where registered validators end
+    plan.print("Generating unregistered validator keystores starting from index: " + str(unregistered_start_index))
+    uniform_unregistered_password = args.get("extra_params", {}).get("unregistered_validator_password", "password")
+    unregistered_keystore_files = validator_keygen.generate_unregistered_validator_keystores_uniform(
+        plan,
+        eth_args.network_params.preregistered_validator_keys_mnemonic,
+        unregistered_start_index,
+        unregistered_validators,
+        uniform_unregistered_password,
+        lighthouse_image,
+    )
+    
     # Generate public/private keypair for every operator we are going to deploy
     operator_keygen.start_cli(plan, keystore_files, args)
     
