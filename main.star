@@ -102,7 +102,7 @@ def run(plan, args):
         plan.print("deploying Anchor nodes. Node count: " + str(anchor_node_count))
 
         # start up all of the anchor nodes
-        config = utils.anchor_testnet_artifact(plan)
+        config = utils.anchor_testnet_artifact(plan, args)
         enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config, anchor_image)
 
     node_index += anchor_node_count

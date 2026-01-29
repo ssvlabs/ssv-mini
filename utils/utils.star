@@ -57,7 +57,7 @@ def new_template_and_data(template, template_data_json):
     return struct(template=template, data=template_data_json)
 
 
-def anchor_testnet_artifact(plan):
+def anchor_testnet_artifact(plan, args):
     base_path = "../nodes/anchor/config"
     config = Directory(
         artifact_names = [
@@ -66,6 +66,17 @@ def anchor_testnet_artifact(plan):
             plan.upload_files(base_path + "/ssv_contract_address.txt"),
             plan.upload_files(base_path + "/ssv_contract_block.txt"),
             plan.upload_files(base_path + "/ssv_domain_type.txt"),
+            plan.upload_files(base_path + "/ssv_network_name.txt"),
+            plan.render_templates(
+                {
+                    "ssv_fork_schedule.yaml": struct(
+                        template=read_file(base_path + "/ssv_fork_schedule.yaml"),
+                        data = {
+                            "BooleEpoch": args.get("boole_epoch", 1 << 63),
+                        }
+                    )
+                }
+            )
         ]
     )
     return config
