@@ -16,10 +16,10 @@ TEMP_DIR=$(mktemp -d)
 FINAL_SHARES=()
 
 # Get operator IDs
-OPERATOR_IDS="$(jq -r '[.operators[].id | tostring] | join(\",\")' ../operator_data/operator_data.json)"
+OPERATOR_IDS="$(jq -r '[.operators[].id | tostring] | join(",")' ../operator_data/operator_data.json)"
 
 # Get operator public keys (comma-separated; Anchor accepts `--public-keys` as a list)
-PUBLIC_KEYS="$(jq -r '[.operators[].publicKey] | join(\",\")' ../operator_data/operator_data.json)"
+PUBLIC_KEYS="$(jq -r '[.operators[].publicKey] | join(",")' ../operator_data/operator_data.json)"
 
 # Process each validator key
 for VALIDATOR_DIR in ../keystores/keys/*; do
