@@ -44,6 +44,9 @@ network:
 monitor:
   enabled: false
 
+# Boole fork activation epoch (shared by both SSV and Anchor nodes)
+boole_epoch: 3
+
 nodes:
   ssv:
     count: 2
