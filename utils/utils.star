@@ -35,6 +35,14 @@ def get_foundry_image_spec(args):
         build_file="Dockerfile.contract",
     )
 
+def get_eth_val_tools_image(args):
+    """Get eth2-val-tools image for validator keystore generation"""
+    return get_image(args, "eth_val_tools")
+
+def get_lighthouse_image(args):
+    """Get Lighthouse image for validator keystore generation"""
+    return get_image(args, "lighthouse")
+
 def get_network_attributes(all_participants):
     el_context = all_participants[0].el_context
     el_service_name = el_context.service_name

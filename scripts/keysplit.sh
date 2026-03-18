@@ -1,12 +1,12 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # Check if jq is installed
 if ! command -v jq &> /dev/null
 then
     echo "jq is not installed. Installing..."
-    apt update -y
-    apt install -y jq
+    apt-get update -y
+    apt-get install -y jq
 else
     echo "jq is already installed."
 fi
@@ -16,19 +16,10 @@ TEMP_DIR=$(mktemp -d)
 FINAL_SHARES=()
 
 # Get operator IDs
-OPERATOR_IDS=$(cat ../operator_data/operator_data.json | jq -r '.operators[].id' | tr '\n' ',' | sed 's/,$//')
+OPERATOR_IDS="$(jq -r '[.operators[].id | tostring] | join(",")' ../operator_data/operator_data.json)"
 
-# Get operator public keys
-PUBLIC_KEYS=""
-for ID in $(echo $OPERATOR_IDS | tr ',' ' '); do
-  KEY=$(cat ../operator_data/operator_data.json | jq -r ".operators[] | select(.id == $ID) | .publicKey")
-  
-  if [ -z "$PUBLIC_KEYS" ]; then
-    PUBLIC_KEYS="$KEY"
-  else
-    PUBLIC_KEYS="$PUBLIC_KEYS,$KEY"
-  fi
-done
+# Get operator public keys (comma-separated; Anchor accepts `--public-keys` as a list)
+PUBLIC_KEYS="$(jq -r '[.operators[].publicKey] | join(",")' ../operator_data/operator_data.json)"
 
 # Process each validator key
 for VALIDATOR_DIR in ../keystores/keys/*; do
@@ -37,22 +28,23 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
     echo "Processing validator key: $VALIDATOR_KEY with nonce: $NONCE"
 
     KEYSTORE_PATH="$VALIDATOR_DIR/voting-keystore.json"
+    PASSWORD_FILE="../keystores/secrets/$VALIDATOR_KEY"
     TEMP_OUTPUT="$TEMP_DIR/$VALIDATOR_KEY-out.json"
-    
+
     anchor keysplit manual \
       --keystore-paths "$KEYSTORE_PATH" \
-      --password-file "../keystores/secrets/$VALIDATOR_KEY" \
+      --password-file "$PASSWORD_FILE" \
       --owner "$OWNER_ADDRESS" \
       --output-path "$TEMP_OUTPUT" \
       --operators "$OPERATOR_IDS" \
       --nonce "$NONCE" \
       --public-keys "$PUBLIC_KEYS" > /dev/null
-      
+
     if [ $? -eq 0 ] && [ -f "$TEMP_OUTPUT" ]; then
       # Extract the share from the temp file and add to our array
       SHARE=$(jq -c '.shares[0]' "$TEMP_OUTPUT")
       FINAL_SHARES+=("$SHARE")
-      
+
       # Increment the nonce for the next run
       NONCE=$((NONCE + 1))
     else

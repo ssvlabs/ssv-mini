@@ -3,7 +3,23 @@ Kurtosis devnet for running local SSV networks.
 
 ## Prerequisites
 - Docker
-- [Kurtosis](https://docs.kurtosis.com/install)
+- [Kurtosis](https://docs.kurtosis.com/install) (>= 1.15.2)
+
+### Troubleshooting
+
+If you see:
+
+```
+ServiceConfig: unexpected keyword argument "publish_udp"
+```
+
+Your Kurtosis engine is too old. Upgrade Kurtosis to >= 1.15.2 and restart the engine:
+
+```bash
+kurtosis engine restart
+```
+
+NOTE: Restarting the engine will stop running enclaves/services.
 
 ## Quick Start (Recommended)
 The easiest way to get started is using the automated setup with the `prepare` command:
@@ -127,6 +143,17 @@ Use this if you want to shutdown previous network and start one from genesis usi
 ```bash
 make reset
 ```
+
+## Unregistered Validator Keystores (Uniform Password)
+
+Unregistered validators are generated with a single uniform password to simplify testing.
+
+- Configure the password in `params.yaml` under:
+  - `extra_params.unregistered_validator_password: "password"`
+- Only unregistered validator keystores are affected. Registered validators keep using eth2-val-tools defaults.
+- Verification (after `make run-with-prepare`):
+  - `kurtosis service exec localnet validator-key-generation-ssv-validator-keystore-unregistered -- sh -lc 'head -n1 /node-keystores-unregistered/secrets/* | sort -u'`
+  - Expect exactly one line (the uniform password).
 
 ### Goals 
 

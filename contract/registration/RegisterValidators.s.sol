@@ -10,7 +10,10 @@ contract RegisterValidator is Script {
   SSVNetwork public ssvNetwork;
   
   // Initial deposit amount (adjust as needed)
-  uint256 constant DEPOSIT_AMOUNT = 1 ether;
+  // Increased to 15 ETH to ensure sufficient balance for reactivation after liquidation
+  // For ~33 validators, minimum required is ~7.26 ETH based on:
+  // minimumBlocksBeforeLiquidation × (burnRate + networkFee) × validatorCount
+  uint256 constant DEPOSIT_AMOUNT = 15 ether;
 
   function run(address ssvNetworkAddress, bytes[] memory publicKeys, bytes[] memory sharesDatas, uint64[] memory operatorIds) external {
     ssvNetwork = SSVNetwork(ssvNetworkAddress);
