@@ -18,6 +18,9 @@ ssv:
     RegistrySyncOffset: "{{ .RegistrySyncOffset }}"
     RegistryContractAddr: "{{ .RegistryContractAddr }}"
     DiscoveryProtocolID: "{{ .DiscoveryProtocolID }}"
+    Forks:
+      GasLimit36: 0
+      Boole: {{ .BooleEpoch }}
 OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
 Exporter: "{{ .Exporter }}"

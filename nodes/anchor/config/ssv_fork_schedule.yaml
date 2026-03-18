@@ -1,0 +1,3 @@
+boole:
+  epoch: {{.BooleEpoch}}
+  domain_type: 00000001

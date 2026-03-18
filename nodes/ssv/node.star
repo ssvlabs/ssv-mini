@@ -16,7 +16,9 @@ def generate_config(
         operator_private_key,
         enr,
         is_exporter,
+        args,
 ):
+    boole_epoch = args.get("boole_epoch", 1 << 63)
     discovery = ""
     if enr == "":
         discovery = "mdns"
@@ -41,7 +43,8 @@ def generate_config(
         Exporter=is_exporter,
         SSVAPIPort=SSV_API_PORT,
         MetricsAPIPort=SSV_METRICS_PORT,
-        EnableTraces=True
+        EnableTraces=True,
+        BooleEpoch=boole_epoch,
     )
 
     plan.print(
