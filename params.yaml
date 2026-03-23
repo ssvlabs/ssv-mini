@@ -41,6 +41,10 @@ network:
     cl:
       enabled: true
 
+# Use pre-computed static keys and keyshares (faster startup, ~40s saved)
+# Set to false to regenerate keys at runtime (required when changing operator/validator counts)
+use_static_keys: true
+
 monitor:
   enabled: false
 
@@ -49,9 +53,9 @@ boole_epoch: 3
 
 nodes:
   ssv:
-    count: 2
+    count: 4
   anchor:
-    count: 2
+    count: 0
 
 # Docker images configuration
 images:

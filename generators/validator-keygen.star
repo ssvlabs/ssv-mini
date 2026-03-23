@@ -5,7 +5,7 @@ PRYSM_PASSWORD_FILEPATH_ON_GENERATOR = "/tmp/prysm-password.txt"
 
 KEYSTORES_GENERATION_TOOL_NAME = "/app/eth2-val-tools"
 
-ETH_VAL_TOOLS_IMAGE = "protolambda/eth2-val-tools:latest"
+ETH_VAL_TOOLS_IMAGE = "protolambda/eth2-val-tools@sha256:098a46aa48e47da6450e40ac6ca32f41bc961adaf3cb8968e61de701fa7c72f5"
 
 SUCCESSFUL_EXEC_CMD_EXIT_CODE = 0
 
@@ -23,8 +23,9 @@ KEYSTORE_GENERATION_FINISHED_FILEPATH_FORMAT = "/tmp/keystores_generated-{0}-{1}
 SERVICE_NAME = "validator-key-generation-ssv-validator-keystore"
 
 ENTRYPOINT_ARGS = [
-    "sleep",
-    "99999",
+    "tail",
+    "-f",
+    "/dev/null",
 ]
 
 SERVICE_CONFIG = ServiceConfig(

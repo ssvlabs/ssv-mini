@@ -1,14 +1,9 @@
 #!/bin/bash
 set -e
 
-# Check if jq is installed
-if ! command -v jq &> /dev/null
-then
-    echo "jq is not installed. Installing..."
-    apt update -y
-    apt install -y jq
-else
-    echo "jq is already installed."
+# Install jq if not available (anchor image may not include it)
+if ! command -v jq &> /dev/null; then
+    apt-get update -qq && apt-get install -y -qq --no-install-recommends jq >/dev/null 2>&1
 fi
 
 NONCE="0"

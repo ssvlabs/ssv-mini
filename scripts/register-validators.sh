@@ -1,16 +1,13 @@
 #!/bin/bash
 set -e
 
-# Check if jq is installed
-if ! command -v jq &> /dev/null
-then
-    echo "jq is not installed. Installing..."
-    apt update -y
-    apt install -y jq
-else
-    echo "jq is already installed."
-fi
-
+# Required env vars: SSV_TOKEN_ADDRESS, SSV_NETWORK_ADDRESS, PRIVATE_KEY, ETH_RPC_URL
+for var in SSV_TOKEN_ADDRESS SSV_NETWORK_ADDRESS PRIVATE_KEY ETH_RPC_URL; do
+    if [ -z "$(eval echo \$$var)" ]; then
+        echo "Error: $var is not set" >&2
+        exit 1
+    fi
+done
 
 cast send $SSV_TOKEN_ADDRESS "approve(address,uint256)" $SSV_NETWORK_ADDRESS 1000000000000000000 --private-key $PRIVATE_KEY --rpc-url $ETH_RPC_URL --legacy --silent
 
