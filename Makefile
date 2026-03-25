@@ -79,6 +79,41 @@ prepare-monitor:
 .PHONY: prepare-all
 prepare-all: prepare-ssv prepare-anchor prepare-monitor
 
+# ── Fault injection (EL node management) ─────────────────────────────
+
+EL_SERVICE?=el-1-geth-lighthouse
+EL_IMAGE?=node/geth-faulty
+
+# Swap EL node to a custom image (e.g. faulty geth build)
+# Usage: make swap-el EL_IMAGE=node/geth-faulty
+#        make swap-el EL_IMAGE=ethereum/client-go:v1.15.0 EL_SERVICE=el-2-geth-lighthouse
+.PHONY: swap-el
+swap-el:
+	@echo "Swapping $(EL_SERVICE) to image: $(EL_IMAGE)"
+	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image $(EL_IMAGE)
+	@echo "Done. $(EL_SERVICE) is now running $(EL_IMAGE)"
+
+# Restore EL node to the default geth image from params.yaml
+.PHONY: restore-el
+restore-el:
+	@echo "Restoring $(EL_SERVICE) to default geth image..."
+	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.16.7
+	@echo "Done. $(EL_SERVICE) restored."
+
+# Stop an EL node (simulate crash)
+.PHONY: stop-el
+stop-el:
+	@echo "Stopping $(EL_SERVICE)..."
+	kurtosis service stop $(ENCLAVE_NAME) $(EL_SERVICE)
+	@echo "$(EL_SERVICE) stopped."
+
+# Start a previously stopped EL node
+.PHONY: start-el
+start-el:
+	@echo "Starting $(EL_SERVICE)..."
+	kurtosis service start $(ENCLAVE_NAME) $(EL_SERVICE)
+	@echo "$(EL_SERVICE) started."
+
 # ── Static key generation ────────────────────────────────────────────
 
 .PHONY: generate-keys
@@ -112,6 +147,13 @@ help:
 	@echo ""
 	@echo "Node management:"
 	@echo "  make restart-ssv-nodes   Rebuild and restart SSV nodes"
+	@echo ""
+	@echo "Fault injection (EL):"
+	@echo "  make swap-el EL_IMAGE=node/geth-faulty   Swap EL to custom image"
+	@echo "  make restore-el                          Restore EL to default geth"
+	@echo "  make stop-el                             Stop EL (simulate crash)"
+	@echo "  make start-el                            Restart stopped EL"
+	@echo "  EL_SERVICE=el-2-geth-lighthouse make stop-el   Target specific EL"
 	@echo ""
 	@echo "Image building:"
 	@echo "  make prepare         Build SSV image (default: stage branch)"
