@@ -137,8 +137,8 @@ send_tx() {
             "sh -c 'FOUNDRY_DISABLE_NIGHTLY_WARNING=1 cast send --private-key $PRIVATE_KEY --rpc-url http://$EL1_IP:8545 $SSV_CONTRACT \"registerOperator(bytes,uint256,bool)\" $pubkey 1000000000 false --legacy'" \
             2>&1 > /dev/null
     else
-        docker run --rm --network "kt-$ENCLAVE_NAME" ghcr.io/foundry-rs/foundry:stable \
-            cast send --private-key "$PRIVATE_KEY" --rpc-url "http://$EL1_IP:8545" \
+        docker run --rm --network "kt-$ENCLAVE_NAME" --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
+            send --private-key "$PRIVATE_KEY" --rpc-url "http://$EL1_IP:8545" \
             "$SSV_CONTRACT" "registerOperator(bytes,uint256,bool)" "$pubkey" 1000000000 false --legacy \
             2>&1 > /dev/null
     fi
