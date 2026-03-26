@@ -84,9 +84,10 @@ print(f'  Proxy passthrough OK (block {int(d[\"result\"],16)})')
 # ── Step 4: Rewire SSV nodes through proxy ──
 echo ""
 echo "Step 4: Rewiring SSV nodes to use proxy..."
+TS=$(date +%s)
 for i in 0 1 2 3; do
     CONFIG_NAME="ssv-config-$i.yaml"
-    PATCHED_NAME="ssv-config-faulty-$i"
+    PATCHED_NAME="ssv-config-faulty-${TS}-$i"
     rm -rf /tmp/ssv-faulty-$i
     kurtosis files download "$ENCLAVE_NAME" "$CONFIG_NAME" /tmp/ssv-faulty-$i 2>/dev/null
 
@@ -95,7 +96,6 @@ for i in 0 1 2 3; do
         continue
     fi
 
-    # Patch ETH1Addr to point at proxy
     sed -i.bak "s|ws://[0-9.]*:8546|ws://$PROXY_IP:8545|g" "/tmp/ssv-faulty-$i/$CONFIG_NAME"
     rm -f "/tmp/ssv-faulty-$i/$CONFIG_NAME.bak"
 
