@@ -1,139 +1,132 @@
 # SSV-Mini
-Kurtosis devnet for running local SSV networks.
+
+Local SSV testnet in ~4 minutes. Kurtosis-based devnet for developing and testing SSV nodes.
 
 ## Prerequisites
-- Docker
-- [Kurtosis](https://docs.kurtosis.com/install)
 
-## Quick Start (Recommended)
-The easiest way to get started is using the automated setup with the `prepare` command:
+- [Docker](https://docs.docker.com/get-docker/) (or [OrbStack](https://orbstack.dev/) on macOS)
+- [Kurtosis CLI](https://docs.kurtosis.com/install) (`brew install kurtosis-tech/tap/kurtosis-cli`)
+
+**Recommended:** 8+ CPU cores, 16GB+ RAM allocated to Docker.
+
+## Quick Start
 
 ```bash
-make run-with-prepare
+git clone https://github.com/ssvlabs/ssv-mini.git && cd ssv-mini
+make prepare    # Clone SSV repo + build Docker image (~5 min first time)
+make run        # Start the testnet (~4 min)
 ```
 
-This single command will:
-- Clone the required repositories (ssv, anchor, ethereum2-monitor) if they don't exist
-- Checkout to the correct branches (ssv: stage, anchor: unstable, ethereum2-monitor: main)
-- Pull the latest changes for existing repositories
-- Build the necessary Docker images
-- Start the SSV network
+That's it. Run `make show` to see services and ports, `make logs` to tail SSV node logs.
 
-## Manual Setup (Alternative)
-If you prefer to manage the repositories and Docker images manually:
+### Test a specific SSV branch
 
 ```bash
-git clone https://github.com/ssvlabs/ssv.git
-git checkout %YOUR_BRANCH%
-docker build -t node/ssv . 
-```
-```bash
-git clone https://github.com/sigp/anchor.git
-git checkout origin/unstable
-docker build -f Dockerfile.devnet -t node/anchor . 
-```
-```bash
-git clone https://github.com/ssvlabs/ethereum2-monitor.git
-docker build -t monitor . 
-```
-
-
-## Available Commands
-
-### Quick Start Commands
-- `make run-with-prepare` (default): Downloads/updates repos and runs the network
-- `make reset-with-prepare`: Cleans everything and runs with fresh setup
-
-### Manual Commands  
-- `make run`: Runs with existing local repos and Docker images
-- `make reset`: Cleans and runs with existing setup
-- `make prepare`: Only prepares repositories and Docker images (without running)
-
-### Utility Commands
-- `make clean`: Stops and removes the current enclave
-- `make show`: Shows currently running services
-- `make restart-ssv-nodes`: Restarts SSV node services
-
-## Interaction
-
-### Running with Automated Setup (Recommended)
-
-```bash
-make run-with-prepare
-```
-
-### Running with Manual Setup
-
-```bash
+SSV_COMMIT=my-feature-branch make prepare
 make run
 ```
 
-View the logs of the nodes
-```bash
-kurtosis service logs -f localnet {service-name}
-```
-
-### Viewing currently running services
+### Push code changes to a running testnet (~30s)
 
 ```bash
-make show
+cd ../ssv && docker build -t node/ssv .
+cd ../ssv-mini && make restart-ssv-nodes
 ```
 
-
-### Restarting SSV Nodes
+Or use the `ssv-mini` CLI tool from the SSV repo:
 
 ```bash
-make restart-ssv-nodes
+# Install (one time, from ssv-mini repo):
+ln -sf "$(pwd)/scripts/ssv-mini" ~/bin/ssv-mini
+
+# Then from the SSV repo:
+ssv-mini              # Create testnet or push code to running one
+ssv-mini restart      # Rebuild + restart SSV nodes only
+ssv-mini logs         # Tail SSV node 0 logs
 ```
 
-**NOTE:** When making changes to SSV Nodes locally, you need to build a new Docker image: `docker build -t node/ssv .`. Then run the following command to redeploy the nodes to the local network: `make restart-ssv-nodes`
+## All Commands
 
-```sh
-docker build -t node/ssv .
-make restart-ssv-nodes
+```
+make help
 ```
 
-## Repository Management
+| Command | Description |
+|---------|-------------|
+| `make run` | Start testnet (default: Fulu, all forks active) |
+| `make run-boole` | Start with Boole fork at epoch 3, Fulu at epoch 5 |
+| `make reset` | Clean + restart from genesis |
+| `make show` | Show running services and ports |
+| `make logs` | Tail ssv-node-0 logs (`SERVICE=ssv-node-1` for others) |
+| `make clean` | Remove all enclaves |
+| `make restart-ssv-nodes` | Restart SSV nodes (after rebuilding image) |
+| `make prepare` | Clone SSV repo + build Docker image |
+| `make prepare-all` | Build SSV + Anchor + Monitor images |
+| `make generate-keys` | Regenerate static operator keys + keyshares |
 
-The `prepare` command automatically manages the following repositories:
-- **SSV**: Clones from `https://github.com/ssvlabs/ssv.git` and checks out the `stage` branch
-- **Anchor**: Clones from `https://github.com/sigp/anchor.git` and checks out the `unstable` branch  
-- **Ethereum2-Monitor**: Clones from `https://github.com/ssvlabs/ethereum2-monitor.git` and checks out the `main` branch
+### Fault Injection
 
-All repositories are cloned to the parent directory (`../`) relative to the ssv-mini project.
+| Command | Description |
+|---------|-------------|
+| `make stop-el` | Stop geth (simulate EL crash) |
+| `make start-el` | Restart stopped geth |
+| `make swap-el EL_IMAGE=<img>` | Hot-swap geth to custom image |
+| `make restore-el` | Restore default geth |
+| `make test-faulty-el` | Bloom filter cross-check test |
 
-### ⚠️ Anchor Image Configuration
+Use `EL_SERVICE=el-2-geth-lighthouse` to target the second EL node.
 
-- The `prepare` command (used by `run-with-prepare` and `reset-with-prepare`) builds the anchor image locally as `node/anchor`
-- However, `params.yaml` defaults to using the remote image `sigp/anchor:v0.3.1`
-- At runtime, the configuration uses the value from `params.yaml`, so the locally built `node/anchor` image is ignored
+## Configuration
 
-**Workaround:** To use the locally built anchor image, you need to manually change the `anchor` value in `params.yaml` from `"sigp/anchor:{tag}"` to `"node/anchor"`.
+Edit `params.yaml` to customize the network:
 
-This inconsistency will be addressed in a future update with a more comprehensive approach that allows specifying the anchor source (local vs remote) via command-line parameters.
+```yaml
+nodes:
+  ssv:
+    count: 4      # Valid: 4, 7, 10, 13 (3f+1 for BFT)
+  anchor:
+    count: 0      # Anchor consensus client nodes
 
-### Starting Over
+network:
+  network_params:
+    fulu_fork_epoch: 0  # 0 = active at genesis
 
-#### With Automated Setup (Recommended)
-Use this to shutdown the previous network and start fresh with the latest repositories:
+boole_epoch: 3          # Omit for pre-Boole
+
+use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
+```
+
+Pre-built configs:
+- `params.yaml` — Fulu at genesis (default)
+- `params-boole.yaml` — Electra→Boole→Fulu fork transitions
 
 ```bash
-make reset-with-prepare
+make run PARAMS_FILE=params-boole.yaml
 ```
-
-#### With Manual Setup
-Use this if you want to shutdown previous network and start one from genesis using your existing local repositories:
-
-```bash
-make reset
-```
-
-### Goals 
-
-- Anyone can run a SSV network on their pc
-- Running any SSV commit on local testnet is easy and fast
-- Local setup is similar to actual testnet
-- Possible to scale by adding resources
 
 ## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐
+│  Geth (EL)  │────▶│ Lighthouse  │
+│   ×2 nodes  │     │  (CL) ×2   │
+└──────┬──────┘     └──────┬──────┘
+       │                   │
+  ┌────┴────┐        ┌────┴────┐
+  │  SSV    │        │Validator│
+  │ Contracts│       │ Clients │
+  └────┬────┘        └─────────┘
+       │
+  ┌────┴──────────────────┐
+  │    SSV Nodes ×4       │
+  │  (operator clusters)  │
+  └───────────────────────┘
+```
+
+- **Ethereum layer**: 2× Geth + 2× Lighthouse + validators (74 total)
+- **SSV layer**: 4 operator nodes in a BFT cluster with 10 SSV validators
+- **Contracts**: SSV Network contracts deployed via Foundry
+
+See [CLAUDE.md](CLAUDE.md) for detailed architecture and development notes.
+
 ![Architecture](./docs/architecture.png)

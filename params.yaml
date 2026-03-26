@@ -34,7 +34,7 @@ monitor:
 
 nodes:
   ssv:
-    count: 4
+    count: 4      # Valid total (ssv+anchor): 4, 7, 10, 13 (3f+1 for BFT)
   anchor:
     count: 0
 

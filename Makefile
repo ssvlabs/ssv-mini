@@ -10,8 +10,14 @@ default: run
 # First time:  make prepare && make run
 # Subsequent:  make run (uses cached images)
 
+.PHONY: check-deps
+check-deps:
+	@command -v docker >/dev/null 2>&1 || { echo "Error: docker not found. Install: https://docs.docker.com/get-docker/"; exit 1; }
+	@command -v kurtosis >/dev/null 2>&1 || { echo "Error: kurtosis not found. Install: https://docs.kurtosis.com/install"; exit 1; }
+	@docker info >/dev/null 2>&1 || { echo "Error: Docker daemon not running. Start Docker/OrbStack first."; exit 1; }
+
 .PHONY: run
-run: ensure-keys
+run: check-deps ensure-keys
 	@echo "──── Starting SSV testnet ────"
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file $(PARAMS_FILE) .
 
