@@ -160,9 +160,13 @@ help:
 	@echo "  make prepare-anchor  Build Anchor image"
 	@echo "  make prepare-all     Build all images"
 	@echo ""
+	@echo "Network scenarios:"
+	@echo "  make run                             Default: Electra (pre-Boole)"
+	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
+	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
+	@echo ""
 	@echo "Configuration:"
 	@echo "  SSV_COMMIT=main make prepare   Use a specific SSV branch"
-	@echo "  PARAMS_FILE=custom.yaml make run"
 	@echo ""
 	@echo "Static keys:"
 	@echo "  make generate-keys   Regenerate static operator keys + keyshares"
@@ -170,10 +174,15 @@ help:
 	@echo "Tests:"
 	@echo "  make test-faulty-el  Bloom filter cross-check test (needs bloom-check SSV)"
 
+# ── Network scenarios ────────────────────────────────────────────────
+
+.PHONY: run-boole
+run-boole: ensure-keys
+	@echo "──── Starting SSV testnet (Boole fork at epoch 3) ────"
+	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-boole.yaml .
+
 # ── Tests ────────────────────────────────────────────────────────────
 
-# Faulty EL test: verifies SSV bloom filter cross-check detects and recovers
-# from a geth node that drops logs. Requires SSV built from bloom-filter-cross-check branch.
 .PHONY: test-faulty-el
 test-faulty-el:
 	@./tests/faulty-el/run-test.sh
