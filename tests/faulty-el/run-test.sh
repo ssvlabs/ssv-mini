@@ -125,20 +125,31 @@ curl -s -X POST "http://127.0.0.1:$PROXY_PORT/fault/set?block=$FB" > /dev/null
 # ── Step 7: Spam contract events ──
 echo ""
 echo "Step 7: Spamming contract events (15 txs)..."
-FOUNDRY_EXISTS=$(kurtosis enclave inspect "$ENCLAVE_NAME" 2>/dev/null | grep -c "foundry" || true)
-if [ "$FOUNDRY_EXISTS" -eq 0 ]; then
-    echo "  WARN: No foundry service. Skipping tx spam."
-    echo "  You need to send SSV contract txs manually to create events."
-else
-    for i in $(seq 1 15); do
-        kurtosis service exec "$ENCLAVE_NAME" foundry \
-            "sh -c 'FOUNDRY_DISABLE_NIGHTLY_WARNING=1 cast send --private-key \$PRIVATE_KEY --rpc-url \$ETH_RPC_URL $SSV_CONTRACT \"registerOperator(bytes,uint256,bool)\" 0x$(python3 -c "import os; print(os.urandom(48).hex())") 1000000000 false --legacy'" \
+
+# Use foundry service if available, otherwise use docker run with cast
+PRIVATE_KEY="39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d"
+FOUNDRY_SERVICE=$(kurtosis enclave inspect "$ENCLAVE_NAME" 2>/dev/null | grep -oE "(foundry|register-validator)" | head -1 || true)
+
+send_tx() {
+    local pubkey="0x$(python3 -c "import os; print(os.urandom(48).hex())")"
+    if [ -n "$FOUNDRY_SERVICE" ]; then
+        kurtosis service exec "$ENCLAVE_NAME" "$FOUNDRY_SERVICE" \
+            "sh -c 'FOUNDRY_DISABLE_NIGHTLY_WARNING=1 cast send --private-key $PRIVATE_KEY --rpc-url http://$EL1_IP:8545 $SSV_CONTRACT \"registerOperator(bytes,uint256,bool)\" $pubkey 1000000000 false --legacy'" \
             2>&1 > /dev/null
-        echo -n "."
-        sleep 8
-    done
-    echo ""
-fi
+    else
+        docker run --rm --network "kt-$ENCLAVE_NAME" ghcr.io/foundry-rs/foundry:stable \
+            cast send --private-key "$PRIVATE_KEY" --rpc-url "http://$EL1_IP:8545" \
+            "$SSV_CONTRACT" "registerOperator(bytes,uint256,bool)" "$pubkey" 1000000000 false --legacy \
+            2>&1 > /dev/null
+    fi
+}
+
+for i in $(seq 1 15); do
+    send_tx
+    echo -n "."
+    sleep 8
+done
+echo ""
 
 # ── Step 8: Wait for SSV to process ──
 echo ""
