@@ -156,10 +156,11 @@ HIT_COUNT=$(echo "$PROXY_STATUS" | python3 -c "import json,sys; print(json.load(
 echo "  Proxy status: $PROXY_STATUS"
 echo ""
 echo "  Proxy fault log:"
-kurtosis service logs "$ENCLAVE_NAME" "$PROXY_SERVICE" 2>&1 | grep -E "FAULT|RETRY" | tail -10 | sed 's/^/    /'
+PROXY_LOGS=$(kurtosis service logs "$ENCLAVE_NAME" "$PROXY_SERVICE" 2>&1)
+echo "$PROXY_LOGS" | grep -E "FAULT|RETRY" | tail -10 | sed 's/^/    /'
 
-FAULT_INJECTED=$(kurtosis service logs "$ENCLAVE_NAME" "$PROXY_SERVICE" 2>&1 | grep -c "FAULT INJECTED" || true)
-RETRIES=$(kurtosis service logs "$ENCLAVE_NAME" "$PROXY_SERVICE" 2>&1 | grep -c "single-block RETRY" || true)
+FAULT_INJECTED=$(echo "$PROXY_LOGS" | grep -c "FAULT INJECTED" || true)
+RETRIES=$(echo "$PROXY_LOGS" | grep -c "single-block RETRY" || true)
 
 echo ""
 echo "  SSV bloom logs:"
@@ -171,25 +172,20 @@ else
 fi
 
 echo ""
-echo "╔══════════════════════════════════════════════╗"
 if [ "$FAULT_INJECTED" -gt 0 ] && [ "$RETRIES" -gt 0 ]; then
-    echo "║  RESULT: PASS                                ║"
-    echo "║                                              ║"
-    echo "║  Fault injected: $FAULT_INJECTED time(s)                      ║"
-    echo "║  Recovery retries: $RETRIES                          ║"
-    echo "║  Bloom cross-check detected and recovered.   ║"
+    echo "=== RESULT: PASS ==="
+    echo "  Fault injected: $FAULT_INJECTED time(s)"
+    echo "  Recovery retries: $RETRIES"
+    echo "  Bloom cross-check detected and recovered."
 else
-    echo "║  RESULT: INCONCLUSIVE                        ║"
-    echo "║                                              ║"
-    echo "║  Faults: $FAULT_INJECTED, Retries: $RETRIES                       ║"
-    echo "║  Possible causes:                            ║"
-    echo "║  - No tx landed on target block $FB          ║"
-    echo "║  - SSV hasn't reached block $FB yet          ║"
-    echo "║  - SSV not built from bloom-check branch     ║"
-    echo "║                                              ║"
-    echo "║  Check: make logs SERVICE=faulty-el-proxy    ║"
+    echo "=== RESULT: INCONCLUSIVE ==="
+    echo "  Faults: $FAULT_INJECTED, Retries: $RETRIES"
+    echo "  Possible causes:"
+    echo "    - No tx landed on target block $FB"
+    echo "    - SSV hasn't reached block $FB yet"
+    echo "    - SSV not built from bloom-check branch"
+    echo "  Check: make logs SERVICE=faulty-el-proxy"
 fi
-echo "╚══════════════════════════════════════════════╝"
 
 # Cleanup hint
 echo ""

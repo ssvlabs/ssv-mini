@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
@@ -21,52 +20,50 @@ import (
 var (
 	faultyBlock atomic.Int64 // -1 = disabled
 	hitCount    atomic.Int64
-	mu          sync.RWMutex
 )
 
 func init() {
 	faultyBlock.Store(-1)
 }
 
-type filterParams struct {
-	FromBlock string `json:"fromBlock"`
-	ToBlock   string `json:"toBlock"`
-}
-
 func hexToUint64(s string) (uint64, error) {
-	s = strings.TrimPrefix(s, "0x")
-	return strconv.ParseUint(s, 16, 64)
+	return strconv.ParseUint(strings.TrimPrefix(s, "0x"), 16, 64)
 }
 
 // processResponse modifies eth_getLogs results to drop logs from the faulty block.
-// On wide queries (multiple blocks in result), it strips the target block's logs.
-// On single-block results, it passes through honestly (so bloom retry recovery works).
-func processResponse(body []byte) []byte {
+// First request for the target block drops logs; subsequent retries pass through
+// honestly so the bloom cross-check recovery succeeds.
+// Returns (modified body, true) if modified, or (original body, false) if unchanged.
+func processResponse(body []byte) ([]byte, bool) {
 	target := faultyBlock.Load()
 	if target < 0 {
-		return body
+		return body, false
 	}
 
-	// Try to parse as JSON-RPC response with a log array result
+	// Cheap pre-filter: log responses always contain "blockNumber"
+	if !bytes.Contains(body, []byte(`"blockNumber"`)) {
+		return body, false
+	}
+
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return body
+		return body, false
 	}
 
 	result, ok := raw["result"]
 	if !ok {
-		return body
+		return body, false
 	}
 
 	var logs []map[string]any
 	if err := json.Unmarshal(result, &logs); err != nil {
-		return body
+		return body, false
 	}
 	if len(logs) == 0 {
-		return body
+		return body, false
 	}
 
-	// Count distinct blocks in result
+	// Count distinct blocks and check for target
 	blockSet := map[uint64]bool{}
 	hasTarget := false
 	for _, l := range logs {
@@ -85,17 +82,13 @@ func processResponse(body []byte) []byte {
 	}
 
 	if !hasTarget {
-		return body
+		return body, false
 	}
 
-	// For single-block queries targeting the faulty block:
-	// Drop on first hit, pass through on subsequent retries (so bloom recovery works).
-	if len(blockSet) <= 1 {
-		if hitCount.Load() > 0 {
-			log.Printf("PROXY: single-block RETRY for block %d — passing through (recovery)", target)
-			return body
-		}
-		// First single-block hit — drop it
+	// Drop on first hit, pass through on retries (so bloom recovery works)
+	if hitCount.Load() > 0 {
+		log.Printf("PROXY: single-block RETRY for block %d — passing through (recovery)", target)
+		return body, false
 	}
 
 	// Strip logs from target block
@@ -115,24 +108,24 @@ func processResponse(body []byte) []byte {
 		}
 	}
 
-	if dropped > 0 {
-		hitCount.Add(1)
-		log.Printf("PROXY: FAULT INJECTED — dropped %d logs from block %d (wide query, %d blocks, hit #%d)",
-			dropped, target, len(blockSet), hitCount.Load())
-
-		newResult, err := json.Marshal(filtered)
-		if err != nil {
-			return body
-		}
-		raw["result"] = newResult
-		out, err := json.Marshal(raw)
-		if err != nil {
-			return body
-		}
-		return out
+	if dropped == 0 {
+		return body, false
 	}
 
-	return body
+	hitCount.Add(1)
+	log.Printf("PROXY: FAULT INJECTED — dropped %d logs from block %d (%d blocks in response, hit #%d)",
+		dropped, target, len(blockSet), hitCount.Load())
+
+	newResult, err := json.Marshal(filtered)
+	if err != nil {
+		return body, false
+	}
+	raw["result"] = newResult
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return body, false
+	}
+	return out, true
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -141,7 +134,6 @@ var wsUpgrader = websocket.Upgrader{
 
 func wsProxy(upstreamWS string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Upgrade client connection
 		clientConn, err := wsUpgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("WS upgrade failed: %v", err)
@@ -149,11 +141,13 @@ func wsProxy(upstreamWS string) http.HandlerFunc {
 		}
 		defer clientConn.Close()
 
-		// Connect to upstream
-		upstreamConn, _, err := websocket.DefaultDialer.Dial(upstreamWS, nil)
+		upstreamConn, resp, err := websocket.DefaultDialer.Dial(upstreamWS, nil)
 		if err != nil {
 			log.Printf("WS upstream dial failed: %v", err)
 			return
+		}
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
 		}
 		defer upstreamConn.Close()
 
@@ -173,7 +167,7 @@ func wsProxy(upstreamWS string) http.HandlerFunc {
 			}
 		}()
 
-		// Upstream → Client (intercept eth_getLogs responses)
+		// Upstream → Client (intercept responses containing logs)
 		go func() {
 			defer func() { done <- struct{}{} }()
 			for {
@@ -182,10 +176,8 @@ func wsProxy(upstreamWS string) http.HandlerFunc {
 					return
 				}
 
-				// Try to intercept any response that looks like it contains logs
 				if faultyBlock.Load() >= 0 && msgType == websocket.TextMessage {
-					modified := processResponse(msg)
-					if !bytes.Equal(modified, msg) {
+					if modified, changed := processResponse(msg); changed {
 						if err := clientConn.WriteMessage(msgType, modified); err != nil {
 							return
 						}
@@ -199,6 +191,10 @@ func wsProxy(upstreamWS string) http.HandlerFunc {
 			}
 		}()
 
+		<-done
+		// Close both connections to unblock the surviving goroutine
+		clientConn.Close()
+		upstreamConn.Close()
 		<-done
 	}
 }
@@ -224,7 +220,10 @@ func main() {
 		}
 	}
 
-	target, _ := url.Parse(upstreamHTTP)
+	target, err := url.Parse(upstreamHTTP)
+	if err != nil {
+		log.Fatalf("Invalid UPSTREAM_HTTP URL %q: %v", upstreamHTTP, err)
+	}
 	httpProxy := httputil.NewSingleHostReverseProxy(target)
 
 	httpProxy.ModifyResponse = func(resp *http.Response) error {
@@ -236,7 +235,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		modified := processResponse(body)
+		modified, _ := processResponse(body)
 		resp.Body = io.NopCloser(bytes.NewReader(modified))
 		resp.ContentLength = int64(len(modified))
 		resp.Header.Set("Content-Length", strconv.Itoa(len(modified)))
@@ -256,29 +255,35 @@ func main() {
 		faultyBlock.Store(n)
 		hitCount.Store(0)
 		log.Printf("CONTROL: fault set for block %d", n)
+		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"faulty_block": %d}`, n)
 	})
 
 	mux.HandleFunc("/fault/clear", func(w http.ResponseWriter, r *http.Request) {
 		faultyBlock.Store(-1)
 		log.Printf("CONTROL: fault cleared")
+		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"faulty_block": null}`)
 	})
 
 	mux.HandleFunc("/fault/status", func(w http.ResponseWriter, r *http.Request) {
 		b := faultyBlock.Load()
 		h := hitCount.Load()
-		fmt.Fprintf(w, `{"faulty_block": %d, "hit_count": %d, "active": %v}`, b, h, b >= 0)
+		w.Header().Set("Content-Type", "application/json")
+		if b < 0 {
+			fmt.Fprintf(w, `{"faulty_block": null, "hit_count": %d, "active": false}`, h)
+		} else {
+			fmt.Fprintf(w, `{"faulty_block": %d, "hit_count": %d, "active": true}`, b, h)
+		}
 	})
 
-	// WS upgrade handler — intercepts WebSocket connections
-	mux.HandleFunc("/ws", wsProxy(upstreamWS))
-	mux.HandleFunc("/ws/", wsProxy(upstreamWS))
+	wsHandler := wsProxy(upstreamWS)
+	mux.HandleFunc("/ws", wsHandler)
+	mux.HandleFunc("/ws/", wsHandler)
 
-	// Default: HTTP RPC proxy or WS upgrade
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if websocket.IsWebSocketUpgrade(r) {
-			wsProxy(upstreamWS)(w, r)
+			wsHandler(w, r)
 			return
 		}
 		httpProxy.ServeHTTP(w, r)

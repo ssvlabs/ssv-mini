@@ -3,7 +3,7 @@ set -e
 
 # Required env vars: SSV_TOKEN_ADDRESS, SSV_NETWORK_ADDRESS, PRIVATE_KEY, ETH_RPC_URL
 for var in SSV_TOKEN_ADDRESS SSV_NETWORK_ADDRESS PRIVATE_KEY ETH_RPC_URL; do
-    if [ -z "$(eval echo \$$var)" ]; then
+    if [ -z "$(printenv "$var")" ]; then
         echo "Error: $var is not set" >&2
         exit 1
     fi
@@ -22,8 +22,6 @@ PUBLIC_KEYS=$(jq -r "[.shares[].payload.publicKey] | join(\",\")" "$JSON_FILE")
 SHARES_DATA=$(jq -r "[.shares[].payload.sharesData] |  join(\",\")" "$JSON_FILE")
 OPERATOR_IDS=$(jq -r ".shares[0].payload.operatorIds | join(\",\")" "$JSON_FILE")
 
-# Run the forge command for this validator
-# cd /app/script/register-validator && \
 forge script /app/script/register-validator/RegisterValidators.s.sol:RegisterValidator \
     --sig "run(address,bytes[],bytes[],uint64[])" \
     "$SSV_NETWORK_ADDRESS" "[$PUBLIC_KEYS]" "[$SHARES_DATA]" "[$OPERATOR_IDS]" --broadcast --rpc-url $ETH_RPC_URL --private-key $PRIVATE_KEY --legacy --silent
