@@ -161,7 +161,7 @@ help:
 	@echo "  make prepare-all     Build all images"
 	@echo ""
 	@echo "Network scenarios:"
-	@echo "  make run                             Default: Electra (pre-Boole)"
+	@echo "  make run                             Default: Fulu (all forks active)"
 	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
