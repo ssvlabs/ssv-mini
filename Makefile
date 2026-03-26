@@ -72,6 +72,7 @@ prepare-monitor:
 		echo "Cloning Monitor repo..." && \
 		git clone https://github.com/ssvlabs/ethereum2-monitor.git ../ethereum2-monitor; \
 	fi
+<<<<<<< HEAD
 	@cd ../ethereum2-monitor && git fetch origin && git checkout origin/main
 	@echo "Building Monitor image..."
 	@cd ../ethereum2-monitor && docker build -t monitor .
@@ -166,3 +167,14 @@ help:
 	@echo ""
 	@echo "Static keys:"
 	@echo "  make generate-keys   Regenerate static operator keys + keyshares"
+	@echo ""
+	@echo "Tests:"
+	@echo "  make test-faulty-el  Bloom filter cross-check test (needs bloom-check SSV)"
+
+# ── Tests ────────────────────────────────────────────────────────────
+
+# Faulty EL test: verifies SSV bloom filter cross-check detects and recovers
+# from a geth node that drops logs. Requires SSV built from bloom-filter-cross-check branch.
+.PHONY: test-faulty-el
+test-faulty-el:
+	@./tests/faulty-el/run-test.sh
