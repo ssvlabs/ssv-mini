@@ -4,6 +4,7 @@ def start(plan, image):
 
     plan.add_service(
         name=service_name,
+        description="Starting PostgreSQL for monitor",
         config=ServiceConfig(
             image=image,
             env_vars={
@@ -12,10 +13,10 @@ def start(plan, image):
                 "POSTGRES_DB": "monitor",
             },
             ports={
-                "http": PortSpec(
+                "postgres": PortSpec(
                     number=port,
                     transport_protocol="TCP",
-                    application_protocol="http",
+                    application_protocol="postgresql",
                 )
             },
             files={

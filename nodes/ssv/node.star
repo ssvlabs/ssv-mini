@@ -1,5 +1,4 @@
 utils = import_module("../../utils/utils.star")
-shared_utils = import_module("github.com/ethpandaops/ethereum-package/src/shared_utils/shared_utils.star")
 constants = import_module("../../utils/constants.star")
 
 SSV_API_PORT = 9232
@@ -47,9 +46,6 @@ def generate_config(
         BooleEpoch=boole_epoch,
     )
 
-    plan.print(
-        "generating SSV node config artifact with data: " + json.indent(json.encode(data)))
-
     ssv_config_template = read_file("config.yml.tmpl")
     file_name = "ssv-config-{}.yaml".format(index)
 
@@ -59,17 +55,18 @@ def generate_config(
             file_name: utils.new_template_and_data(ssv_config_template, data),
         },
         name=file_name,
+        description="Rendering SSV node {} config".format(index),
     )
 
     return rendered_artifact
 
-def start(plan, index, config_artifact, is_exporter, image):
-    SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
-    service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
+SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
+
+def get_service_config(index, config_artifact, is_exporter, image):
+    """Returns a ServiceConfig for an SSV node without starting it (for use with plan.add_services)."""
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
-    # Minimal service configuration
-    service_config = ServiceConfig(
+    return ServiceConfig(
         image=image,
         entrypoint=[
             "make",
@@ -86,19 +83,20 @@ def start(plan, index, config_artifact, is_exporter, image):
                 number=SSV_METRICS_PORT,
                 transport_protocol="TCP",
                 application_protocol="http",
-            )
+            ),
         },
-        cmd=[],
         env_vars={
             "CONFIG_PATH": config_path,
-            # When traces are enabled, these two OTEL configurations are required
-            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc", 
-            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317"
+            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
         },
         files={
-            SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,  # Map the configuration artifact to the desired path
+            SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },
-)
+    )
 
-    # Add the service
+def start(plan, index, config_artifact, is_exporter, image):
+    """Starts a single SSV node. Use get_service_config + plan.add_services for parallel startup."""
+    service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
+    service_config = get_service_config(index, config_artifact, is_exporter, image)
     return plan.add_service(service_name, service_config)

@@ -1,0 +1,197 @@
+#!/bin/bash
+set -e
+
+# ssv-mini — Local SSV testnet developer tool
+#
+# Usage (from the SSV repo directory):
+#   ssv-mini            Create testnet or push code changes to running one
+#   ssv-mini start      Force start a new testnet (cleans existing)
+#   ssv-mini restart    Rebuild SSV image and restart SSV nodes only
+#   ssv-mini stop       Stop and clean the testnet
+#   ssv-mini logs       Tail SSV node logs (default: ssv-node-0)
+#   ssv-mini logs N     Tail SSV node N logs
+#
+# Install (pick one):
+#   ln -sf "$(pwd)/scripts/ssv-mini" ~/bin/ssv-mini     # user-local
+#   sudo ln -sf "$(pwd)/scripts/ssv-mini" /usr/local/bin/ssv-mini  # system-wide
+#
+# Prerequisites: docker, kurtosis, git
+
+ENCLAVE_NAME="localnet"
+
+# --- Dependency checks ---
+check_deps() {
+    local missing=""
+    for cmd in docker kurtosis git; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing="$missing $cmd"
+        fi
+    done
+    if [ -n "$missing" ]; then
+        echo "Error: Missing required tools:$missing"
+        echo "Install them before using ssv-mini."
+        [ -z "$(command -v kurtosis 2>/dev/null)" ] && echo "  kurtosis: https://docs.kurtosis.com/install"
+        [ -z "$(command -v docker 2>/dev/null)" ] && echo "  docker: https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+    if ! docker info &>/dev/null; then
+        echo "Error: Docker daemon is not running. Start Docker/OrbStack first."
+        exit 1
+    fi
+}
+
+# --- Repo discovery ---
+find_ssv_repo() {
+    # Check current directory
+    if [ -f "go.mod" ] && grep -q "github.com/ssvlabs/ssv" go.mod 2>/dev/null; then
+        echo "$(pwd)"
+        return
+    fi
+    # Check SSV_REPO env var
+    if [ -n "$SSV_REPO" ] && [ -f "$SSV_REPO/go.mod" ]; then
+        echo "$SSV_REPO"
+        return
+    fi
+    # Check common sibling locations relative to ssv-mini
+    if [ -n "$SSV_MINI_REPO" ]; then
+        for dir in "$SSV_MINI_REPO/../ssv"; do
+            if [ -f "$dir/go.mod" ] && grep -q "github.com/ssvlabs/ssv" "$dir/go.mod" 2>/dev/null; then
+                echo "$(cd "$dir" && pwd)"
+                return
+            fi
+        done
+    fi
+    echo ""
+}
+
+find_ssv_mini_repo() {
+    # Resolve from script location (works with symlinks)
+    local script_path="${BASH_SOURCE[0]:-$0}"
+    # Follow symlink if needed
+    while [ -L "$script_path" ]; do
+        script_path="$(readlink "$script_path")"
+    done
+    local script_dir="$(cd "$(dirname "$script_path")" && pwd)"
+
+    if [ -f "$script_dir/../kurtosis.yml" ]; then
+        echo "$(cd "$script_dir/.." && pwd)"
+        return
+    fi
+    # Check SSV_MINI_REPO env var
+    if [ -n "$SSV_MINI_REPO" ] && [ -f "$SSV_MINI_REPO/kurtosis.yml" ]; then
+        echo "$SSV_MINI_REPO"
+        return
+    fi
+    # Check sibling directories
+    for dir in ../ssv-mini; do
+        if [ -f "$dir/kurtosis.yml" ]; then
+            echo "$(cd "$dir" && pwd)"
+            return
+        fi
+    done
+    echo ""
+}
+
+check_deps
+
+SSV_MINI_REPO=$(find_ssv_mini_repo)
+SSV_REPO=$(find_ssv_repo)
+
+if [ -z "$SSV_MINI_REPO" ]; then
+    echo "Error: Could not find ssv-mini repo."
+    echo "Set SSV_MINI_REPO env var or ensure it's at ../ssv-mini"
+    exit 1
+fi
+
+# --- Commands ---
+
+is_running() {
+    kurtosis enclave inspect "$ENCLAVE_NAME" &>/dev/null 2>&1
+}
+
+build_ssv_image() {
+    if [ -z "$SSV_REPO" ]; then
+        echo "Error: Could not find SSV repo."
+        echo "Run from the SSV repo directory, set SSV_REPO env var, or ensure it's at ../ssv"
+        exit 1
+    fi
+    echo "Building SSV image from: $SSV_REPO"
+    docker build -t node/ssv "$SSV_REPO"
+}
+
+cmd_start() {
+    build_ssv_image
+    if is_running; then
+        echo "Cleaning existing testnet..."
+        kurtosis clean -a 2>/dev/null || true
+    fi
+    echo "Starting new testnet..."
+    cd "$SSV_MINI_REPO"
+    kurtosis run --verbosity DETAILED --enclave "$ENCLAVE_NAME" --args-file params.yaml .
+}
+
+cmd_restart() {
+    if ! is_running; then
+        echo "No testnet running. Starting a new one..."
+        cmd_start
+        return
+    fi
+    build_ssv_image
+    echo "Restarting SSV nodes..."
+    local count=0
+    count=$(kurtosis enclave inspect "$ENCLAVE_NAME" 2>/dev/null | grep -c "ssv-node-" || true)
+    if [ "$count" -eq 0 ]; then
+        count=4
+    fi
+    local i=0
+    while [ "$i" -lt "$count" ]; do
+        echo "  Updating ssv-node-$i..."
+        kurtosis service update "$ENCLAVE_NAME" "ssv-node-$i" \
+            --files "/ssv-config:ssv-config-$i.yaml"
+        i=$((i + 1))
+    done
+    echo "All SSV nodes restarted."
+}
+
+cmd_stop() {
+    echo "Stopping testnet..."
+    kurtosis clean -a 2>/dev/null || true
+    echo "Testnet stopped."
+}
+
+cmd_logs() {
+    local node="${1:-0}"
+    kurtosis service logs -f "$ENCLAVE_NAME" "ssv-node-$node"
+}
+
+cmd_default() {
+    if is_running; then
+        echo "Testnet is running. Rebuilding and pushing code to SSV nodes..."
+        cmd_restart
+    else
+        echo "No testnet running. Creating new testnet..."
+        cmd_start
+    fi
+}
+
+case "${1:-}" in
+    start)   cmd_start ;;
+    restart) cmd_restart ;;
+    stop)    cmd_stop ;;
+    logs)    cmd_logs "${2:-0}" ;;
+    help|-h|--help)
+        echo "ssv-mini — Local SSV testnet developer tool"
+        echo ""
+        echo "Usage:"
+        echo "  ssv-mini            Create testnet or push code to running one"
+        echo "  ssv-mini start      Force start a new testnet"
+        echo "  ssv-mini restart    Rebuild and restart SSV nodes only"
+        echo "  ssv-mini stop       Stop the testnet"
+        echo "  ssv-mini logs [N]   Tail SSV node N logs (default: 0)"
+        echo ""
+        echo "Environment variables:"
+        echo "  SSV_REPO            Path to SSV repo (auto-detected from cwd or ../ssv)"
+        echo "  SSV_MINI_REPO       Path to ssv-mini repo (auto-detected from script location)"
+        ;;
+    *)       cmd_default ;;
+esac

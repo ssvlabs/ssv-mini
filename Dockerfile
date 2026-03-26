@@ -1,4 +1,4 @@
-FROM fedora:39
+FROM fedora:41
 
 # Install necessary packages
 RUN dnf update -y && \

@@ -1,6 +1,5 @@
-# Default network: Fulu (all forks active at genesis)
-# For fork transition testing, use: make run-boole
-# https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
+# Boole fork test: starts at Electra, forks into Boole at epoch 3, Fulu at epoch 5
+# Usage: make run PARAMS_FILE=params-boole.yaml
 
 network:
   participants:
@@ -19,7 +18,7 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 0
+    fulu_fork_epoch: 5
     perfect_peerdas_enabled: false
     preregistered_validator_count: 74
 
@@ -32,9 +31,11 @@ use_static_keys: true
 monitor:
   enabled: false
 
+boole_epoch: 3
+
 nodes:
   ssv:
-    count: 4      # Valid total (ssv+anchor): 4, 7, 10, 13 (3f+1 for BFT)
+    count: 4
   anchor:
     count: 0
 
