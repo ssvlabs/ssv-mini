@@ -57,13 +57,18 @@ restart-ssv-nodes:
 .PHONY: prepare
 prepare: prepare-ssv
 
+# prepare-ssv builds node/ssv at the FRESHEST commit for SSV_COMMIT (branch, tag, or commit).
+# For a branch we detach at origin/<branch>; a plain `git checkout <branch>` lands on a local
+# branch that `git fetch` does not fast-forward — that is how a stale (v2.3.1) node got rebuilt.
 .PHONY: prepare-ssv
 prepare-ssv:
 	@if [ ! -d "../ssv" ]; then \
 		echo "Cloning SSV repo ($(SSV_COMMIT))..." && \
 		git clone https://github.com/ssvlabs/ssv.git ../ssv; \
 	fi
-	@cd ../ssv && git fetch origin && git checkout $(SSV_COMMIT)
+	@echo "Checking out SSV $(SSV_COMMIT) at its freshest commit..."
+	@cd ../ssv && git fetch origin --tags --force && \
+		( git checkout --detach "origin/$(SSV_COMMIT)" 2>/dev/null || git checkout --detach "$(SSV_COMMIT)" )
 	@echo "Building SSV image..."
 	@cd ../ssv && docker build -t node/ssv .
 
