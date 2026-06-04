@@ -32,6 +32,11 @@ clean:
 show:
 	kurtosis enclave inspect $(ENCLAVE_NAME)
 
+# ssv-mini-down: teardown target invoked by the aetheria orchestrator (TeardownLocalTestnet).
+.PHONY: ssv-mini-down
+ssv-mini-down:
+	kurtosis enclave rm -f $(ENCLAVE_NAME)
+
 SERVICE?=ssv-node-0
 .PHONY: logs
 logs:
