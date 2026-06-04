@@ -1,39 +1,41 @@
 constants = import_module("../utils/constants.star")
 
-def deploy(plan, el, genesis_constants, foundry_image_spec):
-    env_vars = get_env_vars(el, genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key)
-
+# deploy builds the official ssvlabs/ssv-network@v2.0.0 contract set on the devnet using the repo's
+# own hardhat deploy (scripts/deploy-fresh.ts) — the version the aetheria executor's ABI targets
+# (hoodi/mainnet). Replaces the stale Zacholme7/ssv-network foundry fork. See ssvlabs/ssv-mini#29.
+def deploy(plan, el, genesis_constants, deployer_image_spec):
     plan.add_service(
         name=constants.FOUNDRY_SERVICE_NAME,
         config=ServiceConfig(
-            image=foundry_image_spec,
+            image=deployer_image_spec,
             entrypoint=["tail", "-f", "/dev/null"],
-            env_vars=env_vars,
+            env_vars={
+                # The image patches the `local` hardhat network to read the EL RPC + deployer key.
+                "LOCAL_RPC_URL": el,
+                "LOCAL_DEPLOYER_KEY": genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
+            },
             files={
-                "/app/script/register-operator": plan.upload_files("./registration/RegisterOperators.s.sol"),
+                # ethers registration scripts (register_operators runs in this service).
+                "/app/registration": plan.upload_files("./registration"),
             },
         ),
-        description="Starting Foundry contract deployer",
+        description="Starting SSV contract deployer (ssv-network v2.0.0)",
     )
 
-    command_arr = ["forge", "script", "script/DeployAll.s.sol:DeployAll", "--broadcast", "--rpc-url", "${ETH_RPC_URL}", "--private-key", "${PRIVATE_KEY}", "--legacy", "--silent"]
     plan.exec(
         service_name=constants.FOUNDRY_SERVICE_NAME,
         recipe=ExecRecipe(
-            command=["/bin/sh", "-c", " ".join(command_arr)],
+            command=["/bin/sh", "-c", "npx tsx scripts/deploy-fresh.ts --env local --network local"],
         ),
-        description="Deploying SSV contracts (forge DeployAll)",
+        description="Deploying SSV contracts (ssv-network v2.0.0, hardhat deploy-fresh)",
     )
 
-def get_env_vars(eth1_url, private_key):
-    return {
-        "ETH_RPC_URL": eth1_url,
-        "PRIVATE_KEY": private_key,
-        "MINIMUM_BLOCKS_BEFORE_LIQUIDATION": "100800",
-        "MINIMUM_LIQUIDATION_COLLATERAL": "200000000",
-        "OPERATOR_MAX_FEE_INCREASE": "3",
-        "DECLARE_OPERATOR_FEE_PERIOD": "259200",
-        "EXECUTE_OPERATOR_FEE_PERIOD": "345600",
-        "VALIDATORS_PER_OPERATOR_LIMIT": "500",
-        "OPERATOR_KEYS_FILE": "/app/operator_keys.json",
-    }
+    # Surface the deployed addresses (token / network proxy / views proxy + modules) so they can be
+    # pinned in utils/constants.star + the aetheria orchestrator seed.
+    plan.exec(
+        service_name=constants.FOUNDRY_SERVICE_NAME,
+        recipe=ExecRecipe(
+            command=["/bin/sh", "-c", "cat deployments/local/deploy-result.json"],
+        ),
+        description="SSV contract addresses (deploy-result.json)",
+    )

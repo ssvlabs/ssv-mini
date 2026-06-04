@@ -105,17 +105,11 @@ def run(plan, args):
         plan.remove_service(constants.ANCHOR_KEYSPLIT_SERVICE, description="Cleaning up keysplit service")
 
     # ── Step 4: Register validators on-chain ──
-    plan.print("Step 4/5: Registering validators on-chain")
-    interactions.register_validators(
-        plan,
-        keyshare_artifact,
-        constants.SSV_NETWORK_PROXY_CONTRACT,
-        constants.SSV_TOKEN_CONTRACT,
-        el_rpc,
-        genesis_constants,
-        args
-    )
-    plan.remove_service("register-validator", description="Cleaning up validator registrar")
+    # Skipped on the v2.0.0 contracts: the aetheria executor registers and funds its own validators
+    # (registration is payable/msg.value on v2.0.0), and its event flow expects a clean, empty
+    # cluster. Devnet pre-registration of the static keyshares (the payable-deposit path) is tracked
+    # in ssvlabs/ssv-mini#29.
+    plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
 
     # ── Step 5: Start SSV and Anchor nodes ──
     node_index = 0
