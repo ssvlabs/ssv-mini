@@ -34,6 +34,15 @@ def run(plan, args):
     # ── Step 1: Launch Ethereum network ──
     plan.print("Step 1/5: Launching Ethereum network (EL + CL + validators)")
     network_args = args["network"]
+
+    # Guard the aetheria local_testnet seed layout: it adopts deposited-but-VC-idle validators at
+    # indices 64-73 (ssvlabs/aetheria orchestrator/script/insert_test_data.sql). VCs run
+    # [0, validator_count*count); genesis deposits [0, preregistered_validator_count). If VC coverage
+    # reaches 64 the SSV operators would run VC-active validators -> double-sign -> slashing. Fail on drift.
+    _vc_run = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
+    _deposited = network_args["network_params"]["preregistered_validator_count"]
+    if _vc_run > 64 or _deposited < 74:
+        fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed.".format(_vc_run, _deposited))
     ethereum_network = ethereum_package.run(plan, network_args)
 
     cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
