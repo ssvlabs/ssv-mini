@@ -21,9 +21,13 @@ run: check-deps ensure-keys
 	@echo "──── Starting SSV testnet ────"
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file $(PARAMS_FILE) .
 
+# reset rebuilds OUR enclave only: scoped teardown (ssv-mini-down) then run. Uses ssv-mini-down
+# rather than `clean` so a re-run on a shared host/CI runner doesn't wipe co-tenant enclaves.
 .PHONY: reset
-reset: clean run
+reset: ssv-mini-down run
 
+# clean is the engine-wide nuke: `kurtosis clean -a` removes ALL enclaves on the host, not just
+# ours. Kept as a manual escape hatch; automated setup/teardown use the scoped ssv-mini-down below.
 .PHONY: clean
 clean:
 	kurtosis clean -a
@@ -31,6 +35,13 @@ clean:
 .PHONY: show
 show:
 	kurtosis enclave inspect $(ENCLAVE_NAME)
+
+# ssv-mini-down: scoped teardown of OUR enclave only (vs `clean`, which is engine-wide). Used by
+# `reset` and the aetheria orchestrator's TeardownLocalTestnet. `|| true` keeps it idempotent so a
+# repeat teardown (or teardown after a failed bring-up, when the enclave never came up) doesn't error.
+.PHONY: ssv-mini-down
+ssv-mini-down:
+	kurtosis enclave rm -f $(ENCLAVE_NAME) 2>/dev/null || true
 
 SERVICE?=ssv-node-0
 .PHONY: logs
@@ -52,13 +63,18 @@ restart-ssv-nodes:
 .PHONY: prepare
 prepare: prepare-ssv
 
+# prepare-ssv builds node/ssv at the FRESHEST commit for SSV_COMMIT (branch, tag, or commit).
+# For a branch we detach at origin/<branch>; a plain `git checkout <branch>` lands on a local
+# branch that `git fetch` does not fast-forward — that is how a stale (v2.3.1) node got rebuilt.
 .PHONY: prepare-ssv
 prepare-ssv:
 	@if [ ! -d "../ssv" ]; then \
 		echo "Cloning SSV repo ($(SSV_COMMIT))..." && \
 		git clone https://github.com/ssvlabs/ssv.git ../ssv; \
 	fi
-	@cd ../ssv && git fetch origin && git checkout $(SSV_COMMIT)
+	@echo "Checking out SSV $(SSV_COMMIT) at its freshest commit..."
+	@cd ../ssv && git fetch origin --tags --force && \
+		( git checkout --detach "origin/$(SSV_COMMIT)" 2>/dev/null || git checkout --detach "$(SSV_COMMIT)" )
 	@echo "Building SSV image..."
 	@cd ../ssv && docker build -t node/ssv .
 
