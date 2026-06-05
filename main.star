@@ -23,7 +23,7 @@ def run(plan, args):
     monitor_image = utils.get_monitor_image(args)
     postgres_image = utils.get_postgres_image(args)
     redis_image = utils.get_redis_image(args)
-    foundry_image_spec = utils.get_foundry_image_spec(args)
+    deployer_image_spec = utils.get_deployer_image_spec(args)
 
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
         fail("invalid cluster size: " + str(ssv_node_count + anchor_node_count) + ". Valid sizes: 4, 7, 10, 13 (3f+1 for BFT). Edit nodes.ssv.count in params.yaml.")
@@ -51,7 +51,7 @@ def run(plan, args):
 
     # ── Step 2: Deploy SSV smart contracts ──
     plan.print("Step 2/5: Deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants, foundry_image_spec)
+    deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
 
     # ── Step 3: Prepare operator keys and keyshares ──
     use_static_keys = args.get("use_static_keys", True)

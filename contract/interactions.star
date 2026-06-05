@@ -46,7 +46,7 @@ def register_validators(plan, keyshare_artifact, network_address, token_address,
     plan.add_service(
         name="register-validator",
         config=ServiceConfig(
-            image=utils.get_foundry_image_spec(args),
+            image=utils.get_deployer_image_spec(args),
             entrypoint=["tail", "-f", "/dev/null"],
             env_vars={
                 "LOCAL_RPC_URL": rpc,

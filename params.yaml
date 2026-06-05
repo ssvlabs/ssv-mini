@@ -56,4 +56,4 @@ images:
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
-  foundry: "localssv/ssv-network"
+  deployer: "localssv/ssv-network"

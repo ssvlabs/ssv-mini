@@ -26,11 +26,11 @@ def get_postgres_image(args):
     """Get PostgreSQL image"""
     return get_image(args, "postgres")
 
-def get_foundry_image_spec(args):
-    """Get Foundry image build spec"""
-    foundry_image_name = get_image(args, "foundry")
+def get_deployer_image_spec(args):
+    """Get Deployer image build spec"""
+    deployer_image_name = get_image(args, "deployer")
     return ImageBuildSpec(
-        image_name=foundry_image_name,
+        image_name=deployer_image_name,
         build_context_dir="./",
         build_file="Dockerfile.contract",
     )
