@@ -37,12 +37,16 @@ def run(plan, args):
 
     # Guard the aetheria local_testnet seed layout: it adopts deposited-but-VC-idle validators at
     # indices 64-73 (ssvlabs/aetheria orchestrator/script/insert_test_data.sql). VCs run
-    # [0, validator_count*count); genesis deposits [0, preregistered_validator_count). If VC coverage
-    # reaches 64 the SSV operators would run VC-active validators -> double-sign -> slashing. Fail on drift.
-    _vc_run = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
-    _deposited = network_args["network_params"]["preregistered_validator_count"]
-    if _vc_run > 64 or _deposited < 74:
-        fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed.".format(_vc_run, _deposited))
+    # [0, total validator_count*count over all participants); genesis deposits [0, preregistered_validator_count).
+    # If VC coverage reaches 64 the SSV operators would run VC-active validators -> double-sign -> slashing.
+    # Sum over ALL participant groups (not just [0]): validators are assigned sequentially, so adding a
+    # second group (e.g. EL/CL diversity) would extend coverage and could silently reach index 64. Fail on drift.
+    vc_validators = 0
+    for p in network_args["participants"]:
+        vc_validators += p["validator_count"] * p["count"]
+    deposited_validators = network_args["network_params"]["preregistered_validator_count"]
+    if vc_validators > 64 or deposited_validators < 74:
+        fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep total validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed.".format(vc_validators, deposited_validators))
     ethereum_network = ethereum_package.run(plan, network_args)
 
     cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
@@ -81,7 +85,7 @@ def run(plan, args):
         )
     else:
         plan.print("Step 3/5: Generating operator keys and keyshares (dynamic mode)")
-        non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
+        non_ssv_validators = vc_validators  # validators consumed by the genesis EL/CL VCs (total across participants; computed in the layout guard above)
         total_validators = network_args["network_params"]["preregistered_validator_count"]
 
         eth_args = input_parser.input_parser(plan, network_args)

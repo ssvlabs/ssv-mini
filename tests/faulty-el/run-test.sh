@@ -126,22 +126,16 @@ curl -s -X POST "http://127.0.0.1:$PROXY_PORT/fault/set?block=$FB" > /dev/null
 echo ""
 echo "Step 7: Spamming contract events (15 txs)..."
 
-# Use foundry service if available, otherwise use docker run with cast
+# Register throwaway operators via cast to generate SSVNetwork events. The v2.0.0 deployer service
+# is node-based (no cast binary), so always shell out to a one-off standalone foundry container.
 PRIVATE_KEY="39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d"
-FOUNDRY_SERVICE=$(kurtosis enclave inspect "$ENCLAVE_NAME" 2>/dev/null | grep -oE "(foundry|register-validator)" | head -1 || true)
 
 send_tx() {
     local pubkey="0x$(python3 -c "import os; print(os.urandom(48).hex())")"
-    if [ -n "$FOUNDRY_SERVICE" ]; then
-        kurtosis service exec "$ENCLAVE_NAME" "$FOUNDRY_SERVICE" \
-            "sh -c 'FOUNDRY_DISABLE_NIGHTLY_WARNING=1 cast send --private-key $PRIVATE_KEY --rpc-url http://$EL1_IP:8545 $SSV_CONTRACT \"registerOperator(bytes,uint256,bool)\" $pubkey 1000000000 false --legacy'" \
-            2>&1 > /dev/null
-    else
-        docker run --rm --network "kt-$ENCLAVE_NAME" --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
-            send --private-key "$PRIVATE_KEY" --rpc-url "http://$EL1_IP:8545" \
-            "$SSV_CONTRACT" "registerOperator(bytes,uint256,bool)" "$pubkey" 1000000000 false --legacy \
-            2>&1 > /dev/null
-    fi
+    docker run --rm --network "kt-$ENCLAVE_NAME" --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
+        send --private-key "$PRIVATE_KEY" --rpc-url "http://$EL1_IP:8545" \
+        "$SSV_CONTRACT" "registerOperator(bytes,uint256,bool)" "$pubkey" 1000000000 false --legacy \
+        2>&1 > /dev/null
 }
 
 for i in $(seq 1 15); do
