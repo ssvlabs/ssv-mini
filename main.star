@@ -72,7 +72,7 @@ def run(plan, args):
             ))
 
         interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
-        plan.remove_service(constants.FOUNDRY_SERVICE_NAME, description="Cleaning up contract deployer")
+        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
 
         keyshare_artifact = plan.upload_files(
             "./static/keyshares/out.json",
@@ -100,7 +100,7 @@ def run(plan, args):
         plan.remove_service(constants.ANCHOR_CLI_SERVICE_NAME, description="Cleaning up operator key generator")
 
         operator_data_artifact = interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
-        plan.remove_service(constants.FOUNDRY_SERVICE_NAME, description="Cleaning up contract deployer")
+        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
 
         keyshare_artifact = keysplit.split_keys(
             plan,

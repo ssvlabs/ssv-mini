@@ -5,7 +5,7 @@ constants = import_module("../utils/constants.star")
 # (hoodi/mainnet). Replaces the stale Zacholme7/ssv-network foundry fork. See ssvlabs/ssv-mini#29.
 def deploy(plan, el, genesis_constants, deployer_image_spec):
     plan.add_service(
-        name=constants.FOUNDRY_SERVICE_NAME,
+        name=constants.DEPLOYER_SERVICE_NAME,
         config=ServiceConfig(
             image=deployer_image_spec,
             entrypoint=["tail", "-f", "/dev/null"],
@@ -23,7 +23,7 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
     )
 
     plan.exec(
-        service_name=constants.FOUNDRY_SERVICE_NAME,
+        service_name=constants.DEPLOYER_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "npx tsx scripts/deploy-fresh.ts --env local --network local"],
         ),
@@ -39,7 +39,7 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
     # may store EIP-55 checksummed addresses. Views is consumed by aetheria, not here, so it is guarded
     # on the aetheria side; proxy + token are the ones this stack registers against.
     deployed = plan.exec(
-        service_name=constants.FOUNDRY_SERVICE_NAME,
+        service_name=constants.DEPLOYER_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "cat deployments/local/deploy-result.json"],
             extract={

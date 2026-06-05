@@ -11,7 +11,7 @@ def register_operators(plan, public_keys, network_address):
 
     json_content = '{{"publicKeys": [{}]}}'.format(", ".join(quoted_keys))
     plan.exec(
-        service_name=constants.FOUNDRY_SERVICE_NAME,
+        service_name=constants.DEPLOYER_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "echo '{}' > /app/operator_keys.json".format(json_content)],
         ),
@@ -19,7 +19,7 @@ def register_operators(plan, public_keys, network_address):
     )
 
     plan.exec(
-        service_name=constants.FOUNDRY_SERVICE_NAME,
+        service_name=constants.DEPLOYER_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "SSV_NETWORK_ADDRESS={} node /app/registration/register-operators.cjs".format(network_address)],
         ),
@@ -27,7 +27,7 @@ def register_operators(plan, public_keys, network_address):
     )
 
     operator_data_artifact = plan.store_service_files(
-        service_name=constants.FOUNDRY_SERVICE_NAME,
+        service_name=constants.DEPLOYER_SERVICE_NAME,
         src="/app/operator_data.json",
         name="operator_data.json",
         description="Storing operator registration data",
