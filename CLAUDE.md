@@ -62,7 +62,7 @@ Network configuration is controlled via `params.yaml`:
 ### Startup Pipeline (5 steps)
 
 1. **Ethereum Network**: EL (geth) + CL (lighthouse) + validators via ethereum-package
-2. **Contract Deployment**: SSV contracts deployed via Foundry (forge)
+2. **Contract Deployment**: SSV contracts deployed via Hardhat (ssv-network v2.0.0)
 3. **Key Preparation**: Static keys loaded (or generated dynamically if `use_static_keys: false`)
 4. **Registration**: Operators + validators registered on-chain
 5. **SSV Nodes**: All nodes started in parallel via `plan.add_services()`

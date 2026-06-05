@@ -23,7 +23,7 @@ def run(plan, args):
     monitor_image = utils.get_monitor_image(args)
     postgres_image = utils.get_postgres_image(args)
     redis_image = utils.get_redis_image(args)
-    foundry_image_spec = utils.get_foundry_image_spec(args)
+    deployer_image_spec = utils.get_deployer_image_spec(args)
 
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
         fail("invalid cluster size: " + str(ssv_node_count + anchor_node_count) + ". Valid sizes: 4, 7, 10, 13 (3f+1 for BFT). Edit nodes.ssv.count in params.yaml.")
@@ -34,6 +34,19 @@ def run(plan, args):
     # ── Step 1: Launch Ethereum network ──
     plan.print("Step 1/5: Launching Ethereum network (EL + CL + validators)")
     network_args = args["network"]
+
+    # Guard the aetheria local_testnet seed layout: it adopts deposited-but-VC-idle validators at
+    # indices 64-73 (ssvlabs/aetheria orchestrator/script/insert_test_data.sql). VCs run
+    # [0, total validator_count*count over all participants); genesis deposits [0, preregistered_validator_count).
+    # If VC coverage reaches 64 the SSV operators would run VC-active validators -> double-sign -> slashing.
+    # Sum over ALL participant groups (not just [0]): validators are assigned sequentially, so adding a
+    # second group (e.g. EL/CL diversity) would extend coverage and could silently reach index 64. Fail on drift.
+    vc_validators = 0
+    for p in network_args["participants"]:
+        vc_validators += p["validator_count"] * p["count"]
+    deposited_validators = network_args["network_params"]["preregistered_validator_count"]
+    if vc_validators > 64 or deposited_validators < 74:
+        fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep total validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed.".format(vc_validators, deposited_validators))
     ethereum_network = ethereum_package.run(plan, network_args)
 
     cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
@@ -42,7 +55,7 @@ def run(plan, args):
 
     # ── Step 2: Deploy SSV smart contracts ──
     plan.print("Step 2/5: Deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants, foundry_image_spec)
+    deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
 
     # ── Step 3: Prepare operator keys and keyshares ──
     use_static_keys = args.get("use_static_keys", True)
@@ -63,7 +76,7 @@ def run(plan, args):
             ))
 
         interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
-        plan.remove_service(constants.FOUNDRY_SERVICE_NAME, description="Cleaning up contract deployer")
+        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
 
         keyshare_artifact = plan.upload_files(
             "./static/keyshares/out.json",
@@ -72,7 +85,7 @@ def run(plan, args):
         )
     else:
         plan.print("Step 3/5: Generating operator keys and keyshares (dynamic mode)")
-        non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
+        non_ssv_validators = vc_validators  # validators consumed by the genesis EL/CL VCs (total across participants; computed in the layout guard above)
         total_validators = network_args["network_params"]["preregistered_validator_count"]
 
         eth_args = input_parser.input_parser(plan, network_args)
@@ -91,7 +104,7 @@ def run(plan, args):
         plan.remove_service(constants.ANCHOR_CLI_SERVICE_NAME, description="Cleaning up operator key generator")
 
         operator_data_artifact = interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
-        plan.remove_service(constants.FOUNDRY_SERVICE_NAME, description="Cleaning up contract deployer")
+        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
 
         keyshare_artifact = keysplit.split_keys(
             plan,
@@ -105,17 +118,11 @@ def run(plan, args):
         plan.remove_service(constants.ANCHOR_KEYSPLIT_SERVICE, description="Cleaning up keysplit service")
 
     # ── Step 4: Register validators on-chain ──
-    plan.print("Step 4/5: Registering validators on-chain")
-    interactions.register_validators(
-        plan,
-        keyshare_artifact,
-        constants.SSV_NETWORK_PROXY_CONTRACT,
-        constants.SSV_TOKEN_CONTRACT,
-        el_rpc,
-        genesis_constants,
-        args
-    )
-    plan.remove_service("register-validator", description="Cleaning up validator registrar")
+    # Skipped on the v2.0.0 contracts: the aetheria executor registers and funds its own validators
+    # (registration is payable/msg.value on v2.0.0), and its event flow expects a clean, empty
+    # cluster. Devnet pre-registration of the static keyshares (the payable-deposit path) is tracked
+    # in ssvlabs/ssv-mini#29.
+    plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
 
     # ── Step 5: Start SSV and Anchor nodes ──
     node_index = 0

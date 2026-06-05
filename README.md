@@ -125,7 +125,7 @@ make run PARAMS_FILE=params-boole.yaml
 
 - **Ethereum layer**: 2× Geth + 2× Lighthouse + validators (74 total)
 - **SSV layer**: 4 operator nodes in a BFT cluster with 10 SSV validators
-- **Contracts**: SSV Network contracts deployed via Foundry
+- **Contracts**: SSV Network contracts deployed via Hardhat (ssv-network v2.0.0)
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture and development notes.
 

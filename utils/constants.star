@@ -9,4 +9,4 @@ OWNER_ADDRESS ="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
 ANCHOR_KEYSPLIT_SERVICE = "anchor-keysplit"
 ANCHOR_CLI_SERVICE_NAME = "anchor"
 
-FOUNDRY_SERVICE_NAME = "foundry"
+DEPLOYER_SERVICE_NAME = "deployer"  # kurtosis service running the contract deployer

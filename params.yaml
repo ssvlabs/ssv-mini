@@ -1,5 +1,8 @@
-# Default network: Fulu (all forks active at genesis)
-# For fork transition testing, use: make run-boole
+# Network forks: genesis at Electra (deneb + electra at epoch 0); Fulu is deferred far beyond
+# any test run. The ethereum2-monitor (E2M) image cannot parse Fulu beacon blocks — its indexer
+# FATALs with "unknown SignedBeaconBlock version fulu" — so the E2M attestation validation the
+# aetheria executor runs requires the chain to stay on Electra for the run's duration.
+# To test Fulu / fork transitions, set fulu_fork_epoch back to 0 (E2M validation won't work then).
 # https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
 
 network:
@@ -19,8 +22,13 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 0
+    fulu_fork_epoch: 100000
     perfect_peerdas_enabled: false
+    # Indices 64-73 are reserved for the aetheria local_testnet seed: deposited-but-VC-idle
+    # validators the SSV operators adopt (ssvlabs/aetheria orchestrator/script/insert_test_data.sql).
+    # VCs run [0, total validator_count*count summed over all participant groups) = [0,64); genesis
+    # deposits [0, preregistered) = [0,74). Keep that total <= 64 and preregistered_validator_count
+    # >= 74 (main.star asserts this), else operators would run VC-active validators -> double-sign -> slashing.
     preregistered_validator_count: 74
 
   port_publisher:
@@ -29,8 +37,12 @@ network:
 
 use_static_keys: true
 
+# The ethereum2-monitor (E2M) indexes SSV validator attestations and serves the
+# /api/stats API that the aetheria executor's E2M validation polls. Enabled so the
+# local_testnet (event) flow validates attestations end-to-end (the executor maps
+# its e2m endpoint to the monitor-api service; dora is only a block explorer).
 monitor:
-  enabled: false
+  enabled: true
 
 nodes:
   ssv:
@@ -44,4 +56,4 @@ images:
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
-  foundry: "localssv/ssv-network"
+  deployer: "localssv/ssv-network"

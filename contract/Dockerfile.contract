@@ -1,16 +1,29 @@
-FROM ghcr.io/foundry-rs/foundry:stable
+# SSV contract deployer built from OFFICIAL ssvlabs/ssv-network@v2.0.0 — the version deployed on
+# hoodi/mainnet that the aetheria executor's contract ABI targets. Replaces the stale
+# Zacholme7/ssv-network foundry fork (pre-v2.0.0), whose older ABI made the executor's Views
+# calls revert on local_testnet. See ssvlabs/ssv-mini#29.
+#
+# v2.0.0 deploys via hardhat (TypeScript scripts), so the deployer image is node-based.
+FROM node:22-bookworm
 
-USER root
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git jq ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Install Git and other dependencies
-RUN apt-get update && apt-get install -y git curl bash jq
+# Pin to the contract version the executor expects (hoodi/mainnet production).
+ARG SSV_NETWORK_REF=v2.0.0
+RUN git clone --branch ${SSV_NETWORK_REF} --depth 1 https://github.com/ssvlabs/ssv-network .
 
-# Clone the contract source
-RUN git clone --branch foundry --depth 1 https://github.com/Zacholme7/ssv-network .
+RUN npm ci && npx hardhat compile --force
 
-# Install dependencies via Foundry
-RUN forge install
+# Deploy the mock SSVToken too: drop the pre-set token from the local config so deploy-fresh
+# deploys it. All addresses then come from our deploy and are deterministic on a fresh devnet.
+RUN jq 'del(.ssvToken)' deployments/local/config.json > deployments/local/config.tmp.json \
+    && mv deployments/local/config.tmp.json deployments/local/config.json
 
-# Default command - keep container alive
+# Make the `local` hardhat network take the devnet EL RPC + deployer key from env (it otherwise
+# hardcodes 127.0.0.1:8545 with no accounts, which a geth devnet can't satisfy).
+RUN sed -i 's#url: localForkRpcUrl,#url: process.env.LOCAL_RPC_URL ?? localForkRpcUrl,\n      accounts: process.env.LOCAL_DEPLOYER_KEY ? [process.env.LOCAL_DEPLOYER_KEY] : [],#' hardhat.config.ts \
+    && grep -q 'LOCAL_DEPLOYER_KEY' hardhat.config.ts
+
+# Keep the container alive; deploy/registration are driven by exec from deployer.star.
 CMD ["tail", "-f", "/dev/null"]
