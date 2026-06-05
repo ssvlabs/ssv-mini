@@ -30,12 +30,32 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
         description="Deploying SSV contracts (ssv-network v2.0.0, hardhat deploy-fresh)",
     )
 
-    # Surface the deployed addresses (token / network proxy / views proxy + modules) so they can be
-    # pinned in utils/constants.star + the aetheria orchestrator seed.
-    plan.exec(
+    # Surface the deployed addresses (token / network proxy / views proxy + modules) AND fail fast on
+    # determinism drift. The deploy is assumed to produce the same addresses every run: registration
+    # (interactions.star) targets the hardcoded constants.SSV_NETWORK_PROXY_CONTRACT, and the aetheria
+    # orchestrator seed pins these too. If a future ssv-network/hardhat change shifts an address, this
+    # turns a silent mis-registration (operators registered against a wrong/empty address) into a loud
+    # failure here. Compared case-insensitively (jq ascii_downcase vs constant.lower()) since the JSON
+    # may store EIP-55 checksummed addresses. Views is consumed by aetheria, not here, so it is guarded
+    # on the aetheria side; proxy + token are the ones this stack registers against.
+    deployed = plan.exec(
         service_name=constants.FOUNDRY_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "cat deployments/local/deploy-result.json"],
+            extract={
+                "proxy": ".ssvNetworkProxy | ascii_downcase",
+                "token": ".ssvToken | ascii_downcase",
+            },
         ),
         description="SSV contract addresses (deploy-result.json)",
+    )
+    plan.verify(
+        value=deployed["extract.proxy"],
+        assertion="==",
+        target_value=constants.SSV_NETWORK_PROXY_CONTRACT.lower(),
+    )
+    plan.verify(
+        value=deployed["extract.token"],
+        assertion="==",
+        target_value=constants.SSV_TOKEN_CONTRACT.lower(),
     )
