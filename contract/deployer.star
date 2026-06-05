@@ -35,16 +35,18 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
     # (interactions.star) targets the hardcoded constants.SSV_NETWORK_PROXY_CONTRACT, and the aetheria
     # orchestrator seed pins these too. If a future ssv-network/hardhat change shifts an address, this
     # turns a silent mis-registration (operators registered against a wrong/empty address) into a loud
-    # failure here. Compared case-insensitively (jq ascii_downcase vs constant.lower()) since the JSON
-    # may store EIP-55 checksummed addresses. Views is consumed by aetheria, not here, so it is guarded
-    # on the aetheria side; proxy + token are the ones this stack registers against.
+    # failure here. deploy-result.json emits EIP-55 checksummed addresses and constants.star holds the
+    # same checksummed form (EIP-55 is deterministic), so a direct == matches — no case folding needed.
+    # (kurtosis extract takes a simple field path only, no jq functions like ascii_downcase.) Views is
+    # consumed by aetheria, not here, so it is guarded on the aetheria side; proxy + token are the ones
+    # this stack registers against.
     deployed = plan.exec(
         service_name=constants.DEPLOYER_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "cat deployments/local/deploy-result.json"],
             extract={
-                "proxy": ".ssvNetworkProxy | ascii_downcase",
-                "token": ".ssvToken | ascii_downcase",
+                "proxy": ".ssvNetworkProxy",
+                "token": ".ssvToken",
             },
         ),
         description="SSV contract addresses (deploy-result.json)",
@@ -52,10 +54,10 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
     plan.verify(
         value=deployed["extract.proxy"],
         assertion="==",
-        target_value=constants.SSV_NETWORK_PROXY_CONTRACT.lower(),
+        target_value=constants.SSV_NETWORK_PROXY_CONTRACT,
     )
     plan.verify(
         value=deployed["extract.token"],
         assertion="==",
-        target_value=constants.SSV_TOKEN_CONTRACT.lower(),
+        target_value=constants.SSV_TOKEN_CONTRACT,
     )
