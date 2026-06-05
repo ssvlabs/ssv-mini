@@ -30,34 +30,27 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
         description="Deploying SSV contracts (ssv-network v2.0.0, hardhat deploy-fresh)",
     )
 
-    # Surface the deployed addresses (token / network proxy / views proxy + modules) AND fail fast on
-    # determinism drift. The deploy is assumed to produce the same addresses every run: registration
-    # (interactions.star) targets the hardcoded constants.SSV_NETWORK_PROXY_CONTRACT, and the aetheria
-    # orchestrator seed pins these too. If a future ssv-network/hardhat change shifts an address, this
-    # turns a silent mis-registration (operators registered against a wrong/empty address) into a loud
-    # failure here. deploy-result.json emits EIP-55 checksummed addresses and constants.star holds the
-    # same checksummed form (EIP-55 is deterministic), so a direct == matches — no case folding needed.
-    # (kurtosis extract takes a simple field path only, no jq functions like ascii_downcase.) Views is
-    # consumed by aetheria, not here, so it is guarded on the aetheria side; proxy + token are the ones
-    # this stack registers against.
+    # Assert the deployed network proxy + token equal constants.star, failing the run on drift.
+    # Registration (interactions.star) targets the hardcoded constants.SSV_NETWORK_PROXY_CONTRACT and
+    # the aetheria seed pins these too, yet nothing enforced it — a future ssv-network/hardhat change
+    # that shifts an address would silently register operators against the wrong/empty contract.
+    # kurtosis ExecRecipe `extract` treats a command's stdout as an opaque string (it can't field-access
+    # JSON — only HTTP-recipe bodies get parsed), so parse deploy-result.json in-container with node
+    # (the deployer image is node-based) and exit non-zero on mismatch; verifying the exit code makes
+    # the failure explicit regardless of exec's default code handling. Views is consumed by aetheria,
+    # not here, so its determinism is guarded on the aetheria side.
+    addr_check = (
+        'const r=require("/app/deployments/local/deploy-result.json");' +
+        'const wantProxy="' + constants.SSV_NETWORK_PROXY_CONTRACT + '";' +
+        'const wantToken="' + constants.SSV_TOKEN_CONTRACT + '";' +
+        'if(r.ssvNetworkProxy!==wantProxy||r.ssvToken!==wantToken){' +
+        'console.error("DEPLOY ADDRESS DRIFT: proxy="+r.ssvNetworkProxy+" token="+r.ssvToken);' +
+        'process.exit(1)}' +
+        'console.log("deployed proxy + token match constants.star: "+r.ssvNetworkProxy+" / "+r.ssvToken)'
+    )
     deployed = plan.exec(
         service_name=constants.DEPLOYER_SERVICE_NAME,
-        recipe=ExecRecipe(
-            command=["/bin/sh", "-c", "cat deployments/local/deploy-result.json"],
-            extract={
-                "proxy": ".ssvNetworkProxy",
-                "token": ".ssvToken",
-            },
-        ),
-        description="SSV contract addresses (deploy-result.json)",
+        recipe=ExecRecipe(command=["node", "-e", addr_check]),
+        description="Assert deployed proxy + token == constants.star (fail-fast on drift)",
     )
-    plan.verify(
-        value=deployed["extract.proxy"],
-        assertion="==",
-        target_value=constants.SSV_NETWORK_PROXY_CONTRACT,
-    )
-    plan.verify(
-        value=deployed["extract.token"],
-        assertion="==",
-        target_value=constants.SSV_TOKEN_CONTRACT,
-    )
+    plan.verify(value=deployed["code"], assertion="==", target_value=0)
