@@ -120,7 +120,3 @@ curl -s -X POST -H "Content-Type: application/json" \
 - **Docker not running**: Start Docker Desktop / OrbStack first
 - **Stale enclave**: `make clean && make run`
 - **Resource constraints**: Docker needs 8+ CPUs, 16GB+ RAM recommended
-
-## TODO
-
-- [ ] Align SSV contracts to latest `ssvlabs/ssv-network` repo (currently using `Zacholme7/ssv-network` fork)
