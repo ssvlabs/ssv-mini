@@ -55,6 +55,8 @@ make help
 |---------|-------------|
 | `make run` | Start testnet (default: Fulu, all forks active) |
 | `make run-boole` | Start with Boole fork at epoch 3, Fulu at epoch 5 |
+| `make run-gloas` | Start with Gloas (ePBS) at genesis, all-Anchor cluster |
+| `make run-gloas-builders` | Start with Gloas at genesis + buildoor ePBS builders |
 | `make reset` | Clean + restart from genesis |
 | `make show` | Show running services and ports |
 | `make logs` | Tail ssv-node-0 logs (`SERVICE=ssv-node-1` for others) |
@@ -92,13 +94,20 @@ network:
     fulu_fork_epoch: 0  # 0 = active at genesis
 
 boole_epoch: 3          # Omit for pre-Boole
+cstar_epoch: 3          # SSV-side Gloas fork; must equal gloas_fork_epoch. Omit for pre-Gloas
 
 use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
+
+register_validators: true  # Register keyshare validators on-chain (default false; the
+                           # aetheria executor registers its own). Required for standalone
+                           # runs where SSV/Anchor nodes should actually perform duties.
 ```
 
 Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
 - `params-boole.yaml` — Electra→Boole→Fulu fork transitions
+- `params-gloas.yaml` — Gloas (ePBS) at genesis, all-Anchor cluster (needs `ANCHOR_COMMIT=epbs make prepare-anchor`)
+- `params-gloas-builders.yaml` — Gloas at genesis + buildoor ePBS builders (experimental)
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml

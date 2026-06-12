@@ -15,7 +15,13 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
         "--logfile-max-number", "0", "--debug-level", "debug",
         # mitigation of https://github.com/sigp/anchor/issues/765
         "--subscribe-all-subnets",
+        # Prometheus metrics (duty timing, head-event trigger counters, QBFT instrumentation)
+        "--metrics", "--metrics-address", "0.0.0.0", "--metrics-port", "5164",
     ]
+
+    metrics_ports = {
+        "metrics": PortSpec(number=5164, transport_protocol="TCP", application_protocol="http"),
+    }
 
     plan.add_service(
         name="anchor-node-0",
@@ -25,6 +31,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
             entrypoint=["anchor"],
             cmd=command_arr,
             files=files,
+            ports=metrics_ports,
             private_ip_address_placeholder=IP_PLACEHOLDER,
             ready_conditions=ReadyCondition(
                 recipe=ExecRecipe(
@@ -54,6 +61,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
                 entrypoint=["anchor"],
                 cmd=command_arr_with_boot,
                 files=files,
+                ports=metrics_ports,
                 private_ip_address_placeholder=IP_PLACEHOLDER,
             )
         plan.add_services(remaining_configs, description="Starting {} remaining Anchor nodes in parallel".format(num_nodes - 1))

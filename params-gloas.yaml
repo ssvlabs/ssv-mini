@@ -1,0 +1,74 @@
+# Gloas (ePBS / EIP-7732) at GENESIS: every epoch is Gloas, so attestation/proposal duty
+# timing (the 3.0s ATTESTATION_DUE_BPS_GLOAS deadline) is measurable from the first slots.
+#
+# cstar_epoch (the SSV-side Gloas fork) is deliberately NOT scheduled: with CStar active,
+# sigp/anchor#1061 (sync-committee signing still on BeaconVote while attestations move to
+# GloasBeaconVote, same wire MessageId) makes the two committee QBFT instances collide as
+# apparent equivocation, killing every attestation. Without CStar, attestation + sync share
+# one BeaconVote instance (pre-Gloas SSV types), while the CHAIN stays fully Gloas: the
+# proposer path is version-driven (validate_block_proposal keys off the block the BN returns,
+# not the SSV fork), so decoupled Gloas block proposals still work. Re-add cstar_epoch
+# (== gloas_fork_epoch) once #1061 lands.
+# To test the fork TRANSITION instead, set gloas_fork_epoch (+ cstar_epoch when scheduled)
+# to e.g. 3 and boole_epoch to 1 (epochs must be strictly increasing when not 0).
+#
+# Requires a Gloas-capable Anchor image: ANCHOR_COMMIT=epbs make prepare-anchor
+# Usage: make run PARAMS_FILE=params-gloas.yaml
+#
+# geth has no Glamsterdam build, so the EL is nethermind (the devnet-5 pairing). The monitor
+# stays off: E2M cannot parse Fulu+ blocks, and no SSV (go) nodes run here — the cluster is
+# all-Anchor, since only Anchor's epbs branch speaks Gloas.
+
+network:
+  participants:
+  - el_type: nethermind
+    el_image: ethpandaops/nethermind:glamsterdam-devnet-5
+    cl_type: lighthouse
+    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-5
+    validator_count: 32
+    count: 2
+    supernode: true
+
+  additional_services:
+    - dora
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0
+    gloas_fork_epoch: 0
+    perfect_peerdas_enabled: false
+    # Same layout as params.yaml: VCs run [0,64), genesis deposits [0,74); the SSV operators
+    # adopt the deposited-but-VC-idle validators 64-73 (registered on-chain in Step 4 here,
+    # since register_validators is enabled).
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+# Standalone run (no aetheria executor): register the static keyshare validators (indices
+# 64-73) into the operator cluster so the Anchor nodes actually have duties.
+register_validators: true
+
+monitor:
+  enabled: false
+
+boole_epoch: 0
+
+nodes:
+  ssv:
+    count: 0
+  anchor:
+    count: 4
+
+images:
+  ssv: "node/ssv"
+  anchor: "node/anchor"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  deployer: "localssv/ssv-network"

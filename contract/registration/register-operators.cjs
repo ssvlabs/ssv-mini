@@ -13,6 +13,11 @@ const OUT_FILE = process.env.OPERATOR_DATA_FILE || "/app/operator_data.json";
 
 const OPERATOR_FEE = 1000000000n; // 1 SSV (smallest unit)
 const MAX_OPERATOR_FEE = 76528650000000n;
+// Explicit gas limit: nethermind's eth_estimateGas underestimates SSVNetwork's
+// delegatecall-heavy paths (observed: 160k estimate vs 494k actual on registerOperator,
+// inner delegatecall OOG via the 63/64 rule -> revert). ethers v6 sends the raw estimate
+// as gasLimit, so override it. Harmless on geth.
+const GAS_LIMIT = 1500000n;
 
 async function main() {
   const abi = JSON.parse(fs.readFileSync("/app/abis/SSVNetwork.json", "utf8"));
@@ -23,13 +28,13 @@ async function main() {
   const publicKeys = JSON.parse(fs.readFileSync(KEYS_FILE, "utf8")).publicKeys;
   const coder = ethers.AbiCoder.defaultAbiCoder();
 
-  await (await ssv.updateMaximumOperatorFee(MAX_OPERATOR_FEE)).wait();
+  await (await ssv.updateMaximumOperatorFee(MAX_OPERATOR_FEE, { gasLimit: GAS_LIMIT })).wait();
 
   const operators = [];
   for (const pk of publicKeys) {
     // The operator public key (RSA PEM string) is ABI-encoded as `bytes`, matching SSV tooling.
     const encoded = coder.encode(["string"], [pk]);
-    const receipt = await (await ssv.registerOperator(encoded, OPERATOR_FEE, false)).wait();
+    const receipt = await (await ssv.registerOperator(encoded, OPERATOR_FEE, false, { gasLimit: GAS_LIMIT })).wait();
     let id;
     for (const log of receipt.logs) {
       try {

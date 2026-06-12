@@ -2,6 +2,7 @@ ENCLAVE_NAME?=localnet
 PARAMS_FILE?=params.yaml
 SSV_NODE_COUNT?=4
 SSV_COMMIT?=stage
+ANCHOR_COMMIT?=unstable
 
 default: run
 
@@ -78,13 +79,17 @@ prepare-ssv:
 	@echo "Building SSV image..."
 	@cd ../ssv && docker build -t node/ssv .
 
+# prepare-anchor builds node/anchor at the FRESHEST commit for ANCHOR_COMMIT (branch, tag, or
+# commit; default unstable), detaching like prepare-ssv. Note this moves ../anchor's checkout.
 .PHONY: prepare-anchor
 prepare-anchor:
 	@if [ ! -d "../anchor" ]; then \
 		echo "Cloning Anchor repo..." && \
 		git clone https://github.com/sigp/anchor.git ../anchor; \
 	fi
-	@cd ../anchor && git fetch origin && git checkout origin/unstable
+	@echo "Checking out Anchor $(ANCHOR_COMMIT) at its freshest commit..."
+	@cd ../anchor && git fetch origin --tags --force && \
+		( git checkout --detach "origin/$(ANCHOR_COMMIT)" 2>/dev/null || git checkout --detach "$(ANCHOR_COMMIT)" )
 	@echo "Building Anchor image..."
 	@cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
 
@@ -185,10 +190,13 @@ help:
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu (all forks active)"
 	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
+	@echo "  make run-gloas                       Gloas (ePBS) at genesis, all-Anchor cluster"
+	@echo "  make run-gloas-builders              Gloas at genesis + buildoor ePBS builders"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
-	@echo "  SSV_COMMIT=main make prepare   Use a specific SSV branch"
+	@echo "  SSV_COMMIT=main make prepare                  Use a specific SSV branch"
+	@echo "  ANCHOR_COMMIT=epbs make prepare-anchor        Use a specific Anchor branch"
 	@echo ""
 	@echo "Static keys:"
 	@echo "  make generate-keys   Regenerate static operator keys + keyshares"
@@ -202,6 +210,17 @@ help:
 run-boole: ensure-keys
 	@echo "──── Starting SSV testnet (Boole fork at epoch 3) ────"
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-boole.yaml .
+
+# Gloas (ePBS) profiles need a Gloas-capable Anchor image: ANCHOR_COMMIT=epbs make prepare-anchor
+.PHONY: run-gloas
+run-gloas: ensure-keys
+	@echo "──── Starting SSV testnet (Gloas/ePBS at genesis, all-Anchor cluster) ────"
+	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-gloas.yaml .
+
+.PHONY: run-gloas-builders
+run-gloas-builders: ensure-keys
+	@echo "──── Starting SSV testnet (Gloas/ePBS at genesis + buildoor builders) ────"
+	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-gloas-builders.yaml .
 
 # ── Tests ────────────────────────────────────────────────────────────
 

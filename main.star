@@ -1,6 +1,12 @@
-ethereum_package = import_module("github.com/ethpandaops/ethereum-package/main.star@6.1.0")
-input_parser = import_module("github.com/ethpandaops/ethereum-package/src/package_io/input_parser.star@6.1.0")
-genesis_constants = import_module("github.com/ethpandaops/ethereum-package/src/prelaunch_data_generator/genesis_constants/genesis_constants.star@6.1.0")
+# Pinned to a fork of ethereum-package main @ d47e987 (2026-06-11) plus one fix, branch
+# shane-moore/ethereum-package@ssv-mini/builder-skip-preregistered. Why not a release: Gloas
+# (ePBS) genesis needs ethereum-genesis-generator >= 6.0.0 and the latest tagged release
+# (6.1.0) still pins 5.3.5. Why the fork: upstream's builder_count derives genesis builders
+# (and buildoor's key) starting at the participant validator sum, colliding with our
+# preregistered keyshare validators 64-73; the fix skips past preregistered_validator_count.
+ethereum_package = import_module("github.com/shane-moore/ethereum-package/main.star@24e306ff4cd575417b9163d8e6738d740d0c133a")
+input_parser = import_module("github.com/shane-moore/ethereum-package/src/package_io/input_parser.star@24e306ff4cd575417b9163d8e6738d740d0c133a")
+genesis_constants = import_module("github.com/shane-moore/ethereum-package/src/prelaunch_data_generator/genesis_constants/genesis_constants.star@24e306ff4cd575417b9163d8e6738d740d0c133a")
 ssv_node = import_module("./nodes/ssv/node.star")
 anchor_node = import_module("./nodes/anchor/node.star")
 blocks = import_module("./blockchain/blocks.star")
@@ -118,11 +124,24 @@ def run(plan, args):
         plan.remove_service(constants.ANCHOR_KEYSPLIT_SERVICE, description="Cleaning up keysplit service")
 
     # ── Step 4: Register validators on-chain ──
-    # Skipped on the v2.0.0 contracts: the aetheria executor registers and funds its own validators
-    # (registration is payable/msg.value on v2.0.0), and its event flow expects a clean, empty
-    # cluster. Devnet pre-registration of the static keyshares (the payable-deposit path) is tracked
-    # in ssvlabs/ssv-mini#29.
-    plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
+    # Default off: the aetheria executor registers and funds its own validators (registration is
+    # payable/msg.value on v2.0.0), and its event flow expects a clean, empty cluster (see #29).
+    # Standalone runs (no aetheria, e.g. the Gloas/ePBS profiles) set register_validators: true so
+    # the keyshare validators are registered to the operator cluster and duties actually fire.
+    if args.get("register_validators", False):
+        plan.print("Step 4/5: Registering keyshare validators on-chain")
+        interactions.register_validators(
+            plan,
+            keyshare_artifact,
+            constants.SSV_NETWORK_PROXY_CONTRACT,
+            constants.SSV_TOKEN_CONTRACT,
+            el_rpc,
+            genesis_constants,
+            args,
+        )
+        plan.remove_service("register-validator", description="Cleaning up validator registration service")
+    else:
+        plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
 
     # ── Step 5: Start SSV and Anchor nodes ──
     node_index = 0

@@ -53,7 +53,10 @@ Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
 - `boole_epoch`: Boole fork activation epoch
+- `cstar_epoch`: CStar (SSV-side Gloas) fork epoch; must equal `gloas_fork_epoch`
 - `network.network_params.fulu_fork_epoch`: Set >0 to test Electra→Fulu transition
+- `network.network_params.gloas_fork_epoch`: Gloas (ePBS) activation; see `params-gloas.yaml`
+- `register_validators`: Register keyshare validators on-chain (default false; aetheria registers its own)
 - `monitor.enabled`: Enable monitoring stack
 - `images.*`: Docker image overrides
 

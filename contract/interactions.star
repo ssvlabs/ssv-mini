@@ -39,9 +39,9 @@ def register_operators(plan, public_keys, network_address):
 # register_validators bulk-registers the keyshare validators on-chain via the ethers script
 # (register-validators.cjs) in a node-based service with the keyshares mounted.
 #
-# UNUSED: validator pre-registration is skipped on local_testnet (main.star Step 4) — the aetheria
-# executor registers and funds its own validators. Retained (with register-validators.cjs) pending
-# devnet pre-registration, tracked under #29.
+# Gated behind `register_validators` in params (main.star Step 4, default off): the aetheria
+# local_testnet flow skips it (the executor registers and funds its own validators; see #29),
+# while standalone runs (e.g. the Gloas/ePBS profiles) enable it so duties fire.
 def register_validators(plan, keyshare_artifact, network_address, token_address, rpc, genesis_constants, args):
     plan.add_service(
         name="register-validator",

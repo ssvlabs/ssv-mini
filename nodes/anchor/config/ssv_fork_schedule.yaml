@@ -1,3 +1,8 @@
 boole:
   epoch: {{.BooleEpoch}}
   domain_type: 00000001
+{{- if .HasCStar }}
+cstar:
+  epoch: {{.CStarEpoch}}
+  domain_type: "00000003"
+{{- end }}
