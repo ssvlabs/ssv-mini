@@ -1,0 +1,75 @@
+# Gloas (ePBS / EIP-7732) at GENESIS with external builders — experimental profile.
+# ethereum-package only registers genesis ePBS builders (0x03 withdrawal credentials) when
+# gloas_fork_epoch is 0, so this profile forfeits fork-transition testing (use params-gloas.yaml
+# for that) in exchange for the external-builder bid path: buildoor submits ePBS bids, and the
+# chain-level PTC (the lighthouse VC's validators 0-63) attests payload timeliness.
+# Anchor-side PTC duties stay inert until sigp/anchor lands the PayloadAttestationService
+# spawn (#1078) and sign_payload_attestation (#1082).
+#
+# Boole at epoch 0. CStar is deliberately NOT scheduled: with CStar active, the sync-committee
+# path still decides BeaconVote while attestations decide GloasBeaconVote on the same wire
+# MessageId, which gossip-rejects as equivocation and graylists the cluster in ~4 epochs
+# (sigp/anchor#1061). Do not add cstar_epoch until #1061 lands. Without CStar the proposer
+# path is unaffected (block decode is version-driven), which is what this profile tests.
+#
+# Requires a Gloas-capable Anchor image: ANCHOR_COMMIT=epbs make prepare-anchor
+# Usage: make run PARAMS_FILE=params-gloas-builders.yaml
+
+network:
+  participants:
+  - el_type: nethermind
+    el_image: ethpandaops/nethermind:glamsterdam-devnet-5
+    cl_type: lighthouse
+    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-5
+    validator_count: 32
+    count: 2
+    supernode: true
+
+  additional_services:
+    - dora
+
+  # buildoor: self-contained builder+relay with ePBS bidding (epbs_builder defaults true).
+  mev_type: "buildoor"
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0
+    gloas_fork_epoch: 0
+    # Genesis ePBS builders with 0x03 withdrawal credentials (requires gloas at epoch 0).
+    builder_count: 2
+    perfect_peerdas_enabled: false
+    # Same layout as params.yaml: VCs run [0,64), genesis deposits [0,74); the SSV operators
+    # adopt the deposited-but-VC-idle validators 64-73 (registered on-chain in Step 4 here,
+    # since register_validators is enabled).
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+# Standalone run (no aetheria executor): register the static keyshare validators (indices
+# 64-73) into the operator cluster so the Anchor nodes actually have duties.
+register_validators: true
+
+monitor:
+  enabled: false
+
+boole_epoch: 0
+
+nodes:
+  ssv:
+    count: 0
+  anchor:
+    count: 4
+
+images:
+  ssv: "node/ssv"
+  anchor: "node/anchor"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  deployer: "localssv/ssv-network"
