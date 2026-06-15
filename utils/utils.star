@@ -73,13 +73,6 @@ def anchor_testnet_artifact(plan, args):
                         template=read_file(base_path + "/ssv_fork_schedule.yaml"),
                         data = {
                             "BooleEpoch": args.get("boole_epoch", 1 << 63),
-                            # CStar is the SSV-side Gloas fork: Anchor gates Gloas-era consensus
-                            # types on it, so cstar_epoch must equal the chain's gloas_fork_epoch.
-                            # Omitted from the schedule entirely when unset (Anchor requires
-                            # strictly increasing fork epochs, so a far-future default would
-                            # conflict with an unset Boole).
-                            "HasCStar": "cstar_epoch" in args,
-                            "CStarEpoch": args.get("cstar_epoch", 0),
                         }
                     )
                 }

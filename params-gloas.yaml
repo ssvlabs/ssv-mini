@@ -1,16 +1,19 @@
 # Gloas (ePBS / EIP-7732) at GENESIS: every epoch is Gloas, so attestation/proposal duty
 # timing (the 3.0s ATTESTATION_DUE_BPS_GLOAS deadline) is measurable from the first slots.
 #
-# cstar_epoch (the SSV-side Gloas fork) is deliberately NOT scheduled: with CStar active,
-# sigp/anchor#1061 (sync-committee signing still on BeaconVote while attestations move to
-# GloasBeaconVote, same wire MessageId) makes the two committee QBFT instances collide as
-# apparent equivocation, killing every attestation. Without CStar, attestation + sync share
-# one BeaconVote instance (pre-Gloas SSV types), while the CHAIN stays fully Gloas: the
-# proposer path is version-driven (validate_block_proposal keys off the block the BN returns,
-# not the SSV fork), so decoupled Gloas block proposals still work. Re-add cstar_epoch
-# (== gloas_fork_epoch) once #1061 lands.
-# To test the fork TRANSITION instead, set gloas_fork_epoch (+ cstar_epoch when scheduled)
-# to e.g. 3 and boole_epoch to 1 (epochs must be strictly increasing when not 0).
+# Gloas/ePBS activates purely from network_params.gloas_fork_epoch (the Ethereum fork). There
+# is no SSV-side fork knob: sigp/anchor#1090 removed Fork::CStar and gates Gloas-era SSV
+# consensus on the eth ChainSpec (gloas_enabled()), so with gloas_fork_epoch: 0 the cluster runs
+# GloasBeaconVote committee consensus from genesis.
+#
+# Block proposals work whenever Gloas is active (the proposer path is version-driven, keyed off
+# the block the BN returns). SSV cluster ATTESTATIONS additionally require an Anchor image that
+# carries the sigp/anchor#1061 fix: until the sync-committee signing path is migrated to
+# GloasBeaconVote it still emits BeaconVote on the shared committee QBFT instance and equivocates
+# against the attestation path, graylisting the cluster (~4 epochs, 100% attestation failure).
+# External-builder bids and chain-level PTC are testable regardless of #1061.
+# To test the fork TRANSITION instead, set gloas_fork_epoch (and boole_epoch, strictly increasing
+# when not 0) to e.g. 3.
 #
 # Requires a Gloas-capable Anchor image: ANCHOR_COMMIT=epbs make prepare-anchor
 # Usage: make run PARAMS_FILE=params-gloas.yaml

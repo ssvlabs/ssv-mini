@@ -6,11 +6,12 @@
 # Anchor-side PTC duties stay inert until sigp/anchor lands the PayloadAttestationService
 # spawn (#1078) and sign_payload_attestation (#1082).
 #
-# Boole at epoch 0. CStar is deliberately NOT scheduled: with CStar active, the sync-committee
-# path still decides BeaconVote while attestations decide GloasBeaconVote on the same wire
-# MessageId, which gossip-rejects as equivocation and graylists the cluster in ~4 epochs
-# (sigp/anchor#1061). Do not add cstar_epoch until #1061 lands. Without CStar the proposer
-# path is unaffected (block decode is version-driven), which is what this profile tests.
+# Gloas/ePBS activates from network_params.gloas_fork_epoch (the Ethereum fork); sigp/anchor#1090
+# removed the SSV Fork::CStar, so there is no cstar_epoch knob. Boole stays at epoch 0. The
+# external-builder bids and chain-level PTC this profile tests work whenever Gloas is active,
+# independent of the SSV committee consensus type. (SSV cluster attestations additionally need an
+# Anchor image with the sigp/anchor#1061 fix, else the unmigrated sync path equivocates against
+# GloasBeaconVote; see params-gloas.yaml.)
 #
 # Requires a Gloas-capable Anchor image: ANCHOR_COMMIT=epbs make prepare-anchor
 # Usage: make run PARAMS_FILE=params-gloas-builders.yaml

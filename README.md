@@ -71,11 +71,13 @@ Two profiles:
   Kurtosis fetches it automatically, no action needed. The fork exists because Gloas genesis needs
   `ethereum-genesis-generator >= 6.0.0` (no tagged release ships it), plus a one-line fix so genesis
   ePBS builders do not collide with the preregistered keyshare validators (indices 64-73).
-- **Do not schedule CStar yet.** The profiles deliberately omit `cstar_epoch`. Scheduling the SSV-side
-  Gloas fork before [sigp/anchor#1061](https://github.com/sigp/anchor/issues/1061) lands makes the
-  sync-committee path equivocate against attestations on the shared QBFT wire id, graylisting the
-  cluster within ~4 epochs (100% attestation failure). Proposals do not need CStar (block decode is
-  version-driven).
+- **Gloas is driven by `gloas_fork_epoch`; SSV attestations need the #1061 fix in your anchor image.**
+  [sigp/anchor#1090](https://github.com/sigp/anchor/pull/1090) removed the SSV-side `Fork::CStar`, so
+  ePBS now activates purely from the Ethereum fork (no `cstar_epoch` knob). Block proposals, external
+  builder bids, and chain-level PTC work whenever Gloas is active. SSV cluster attestations also need
+  an anchor image carrying [sigp/anchor#1061](https://github.com/sigp/anchor/issues/1061): until the
+  sync-committee signing path moves to `GloasBeaconVote`, it equivocates against the attestation path
+  on the shared QBFT wire id and graylists the cluster within ~4 epochs (100% attestation failure).
 - **`make prepare-anchor` moves `../anchor`'s checkout** to a detached HEAD at `origin/epbs`. If you
   keep local work in `../anchor`, branch or stash it first (commits are not lost, but HEAD relocates).
 - **All-Anchor cluster** (`ssv.count: 0`): no `node/ssv` image is needed, so skip `make prepare`.
@@ -136,7 +138,6 @@ network:
     fulu_fork_epoch: 0  # 0 = active at genesis
 
 boole_epoch: 3          # Omit for pre-Boole
-cstar_epoch: 3          # SSV-side Gloas fork; must equal gloas_fork_epoch. Omit for pre-Gloas
 
 use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 
