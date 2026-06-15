@@ -59,12 +59,13 @@ make logs SERVICE=anchor-node-0          # tail an operator (no ssv-node-0 in th
 
 > **Until [sigp/anchor#1090](https://github.com/sigp/anchor/pull/1090) merges into `epbs`,** build from
 > the PR branch instead: `ANCHOR_COMMIT=rip-cstar make prepare-anchor`. These profiles assume the #1090
-> fork model (ePBS gated on the Ethereum Gloas fork; the SSV `Fork::CStar` is gone). Once #1090 lands in
+> fork model (ePBS gated on the Ethereum Gloas fork). Once #1090 lands in
 > `epbs`, plain `ANCHOR_COMMIT=epbs` is correct again.
 
 Two profiles:
 - **`params-gloas.yaml`** (`make run-gloas`): Gloas at genesis, 4-operator all-Anchor cluster,
-  keyshare validators registered on-chain. The core profile for proposal and attestation-timing tests.
+  keyshare validators registered on-chain. The core profile for proposal tests (attestation timing
+  needs an anchor image carrying the #1061 fix; see below).
 - **`params-gloas-builders.yaml`** (`make run-gloas-builders`): adds 2 genesis ePBS builders plus
   buildoor, exercising external bids, payload reveals, and chain-level PTC (`payload_attestations`).
 

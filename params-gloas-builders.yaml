@@ -6,8 +6,8 @@
 # Anchor-side PTC duties stay inert until sigp/anchor lands the PayloadAttestationService
 # spawn (#1078) and sign_payload_attestation (#1082).
 #
-# Gloas/ePBS activates from network_params.gloas_fork_epoch (the Ethereum fork); sigp/anchor#1090
-# removed the SSV Fork::CStar, so there is no cstar_epoch knob. Boole stays at epoch 0. The
+# Gloas/ePBS activates from network_params.gloas_fork_epoch (the Ethereum fork); there is no
+# SSV-side fork knob (Gloas-era SSV consensus is gated on the eth ChainSpec). Boole stays at epoch 0. The
 # external-builder bids and chain-level PTC this profile tests work whenever Gloas is active,
 # independent of the SSV committee consensus type. (SSV cluster attestations additionally need an
 # Anchor image with the sigp/anchor#1061 fix, else the unmigrated sync path stalls the committee

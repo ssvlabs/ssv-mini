@@ -2,9 +2,8 @@
 # timing (the 3.0s ATTESTATION_DUE_BPS_GLOAS deadline) is measurable from the first slots.
 #
 # Gloas/ePBS activates purely from network_params.gloas_fork_epoch (the Ethereum fork). There
-# is no SSV-side fork knob: sigp/anchor#1090 removed Fork::CStar and gates Gloas-era SSV
-# consensus on the eth ChainSpec (gloas_enabled()), so with gloas_fork_epoch: 0 the cluster runs
-# GloasBeaconVote committee consensus from genesis.
+# is no SSV-side fork knob: Gloas-era SSV consensus is gated on the eth ChainSpec (gloas_enabled()),
+# so with gloas_fork_epoch: 0 the cluster runs GloasBeaconVote committee consensus from genesis.
 #
 # Block proposals work whenever Gloas is active (the proposer path is version-driven, keyed off
 # the block the BN returns). SSV cluster ATTESTATIONS additionally require an Anchor image that
