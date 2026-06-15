@@ -8,9 +8,11 @@
 #
 # Block proposals work whenever Gloas is active (the proposer path is version-driven, keyed off
 # the block the BN returns). SSV cluster ATTESTATIONS additionally require an Anchor image that
-# carries the sigp/anchor#1061 fix: until the sync-committee signing path is migrated to
-# GloasBeaconVote it still emits BeaconVote on the shared committee QBFT instance and equivocates
-# against the attestation path, graylisting the cluster (~4 epochs, 100% attestation failure).
+# carries the sigp/anchor#1061 fix: with Gloas active, attestations run GloasBeaconVote while the
+# sync-committee path still runs BeaconVote, so they no longer share one committee QBFT instance.
+# The attestation consensus reaches COMMIT, but the sync consensus round-changes forever and the
+# committee partial-signature batch (sized to attestations + sync) never fills, so the agreed
+# attestation is never submitted (measured live on a #1090 image: 0 attestations published).
 # External-builder bids and chain-level PTC are testable regardless of #1061.
 # To test the fork TRANSITION instead, set gloas_fork_epoch (and boole_epoch, strictly increasing
 # when not 0) to e.g. 3.

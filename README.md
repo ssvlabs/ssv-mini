@@ -57,6 +57,11 @@ make run-gloas                           # or: make run-gloas-builders
 make logs SERVICE=anchor-node-0          # tail an operator (no ssv-node-0 in these profiles)
 ```
 
+> **Until [sigp/anchor#1090](https://github.com/sigp/anchor/pull/1090) merges into `epbs`,** build from
+> the PR branch instead: `ANCHOR_COMMIT=rip-cstar make prepare-anchor`. These profiles assume the #1090
+> fork model (ePBS gated on the Ethereum Gloas fork; the SSV `Fork::CStar` is gone). Once #1090 lands in
+> `epbs`, plain `ANCHOR_COMMIT=epbs` is correct again.
+
 Two profiles:
 - **`params-gloas.yaml`** (`make run-gloas`): Gloas at genesis, 4-operator all-Anchor cluster,
   keyshare validators registered on-chain. The core profile for proposal and attestation-timing tests.
@@ -75,9 +80,13 @@ Two profiles:
   [sigp/anchor#1090](https://github.com/sigp/anchor/pull/1090) removed the SSV-side `Fork::CStar`, so
   ePBS now activates purely from the Ethereum fork (no `cstar_epoch` knob). Block proposals, external
   builder bids, and chain-level PTC work whenever Gloas is active. SSV cluster attestations also need
-  an anchor image carrying [sigp/anchor#1061](https://github.com/sigp/anchor/issues/1061): until the
-  sync-committee signing path moves to `GloasBeaconVote`, it equivocates against the attestation path
-  on the shared QBFT wire id and graylists the cluster within ~4 epochs (100% attestation failure).
+  an anchor image carrying [sigp/anchor#1061](https://github.com/sigp/anchor/issues/1061): with Gloas
+  active the committee runs `GloasBeaconVote` for attestations, but the sync-committee path still runs
+  `BeaconVote`, so the two no longer share one committee QBFT instance. The attestation consensus still
+  reaches COMMIT, but the sync consensus round-changes every slot and never completes, and because the
+  committee's post-consensus partial-signature batch is sized to attestations + sync messages, it never
+  fills, so the agreed attestation is never submitted. Measured live on a plain #1090 image (`rip-cstar`):
+  proposals canonical, attestations 0. Consensus succeeds; only submission is blocked.
 - **`make prepare-anchor` moves `../anchor`'s checkout** to a detached HEAD at `origin/epbs`. If you
   keep local work in `../anchor`, branch or stash it first (commits are not lost, but HEAD relocates).
 - **All-Anchor cluster** (`ssv.count: 0`): no `node/ssv` image is needed, so skip `make prepare`.
