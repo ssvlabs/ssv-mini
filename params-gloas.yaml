@@ -11,7 +11,8 @@
 # sync-committee path still runs BeaconVote, so they no longer share one committee QBFT instance.
 # The attestation consensus reaches COMMIT, but the sync consensus round-changes forever and the
 # committee partial-signature batch (sized to attestations + sync) never fills, so the agreed
-# attestation is never submitted (measured live on a #1090 image: 0 attestations published).
+# attestation is never submitted (measured live on an epbs image without #1061: 0 attestations
+# published).
 # External-builder bids and chain-level PTC are testable regardless of #1061.
 # To test the fork TRANSITION instead, set gloas_fork_epoch (and boole_epoch, strictly increasing
 # when not 0) to e.g. 3.

@@ -54,7 +54,7 @@ Network configuration is controlled via `params.yaml`:
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
 - `boole_epoch`: Boole fork activation epoch
 - `network.network_params.fulu_fork_epoch`: Set >0 to test Electra→Fulu transition
-- `network.network_params.gloas_fork_epoch`: Gloas (ePBS) activation; sole Gloas switch (anchor #1090 removed the SSV-side CStar fork, gating ePBS on the eth fork). See `params-gloas.yaml`
+- `network.network_params.gloas_fork_epoch`: Gloas (ePBS) activation; the sole Gloas switch (ePBS is gated on the Ethereum fork; no SSV-side fork knob). See `params-gloas.yaml`
 - `register_validators`: Register keyshare validators on-chain (default false; aetheria registers its own)
 - `monitor.enabled`: Enable monitoring stack
 - `images.*`: Docker image overrides
