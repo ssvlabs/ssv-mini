@@ -1,0 +1,70 @@
+# Gloas / ePBS (EIP-7732) fork-transition test: genesis on Fulu, forks into Gloas at epoch 2.
+# Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas
+#        (or: make run PARAMS_FILE=params-gloas.yaml)
+#
+# Clients: ethpandaops glamsterdam-devnet-5 builds — the stock geth/lighthouse releases used by
+# params.yaml do NOT implement EIP-7732. The genesis generator is pinned to a Gloas-aware build
+# (the ethereum-package@6.1.0 default, 5.3.5, predates Gloas).
+#
+# Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
+# node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
+# ePBS builds on) must be active, though — hence boole_epoch: 0 (default is disabled).
+#
+# Monitor (E2M) is disabled: the ethereum2-monitor image cannot parse Fulu/Gloas beacon blocks
+# (it decodes via go-eth2-client, which has no Gloas types). Observe ePBS via the SSV node logs
+# and dora. Re-enable once E2M gains Gloas support.
+
+network:
+  participants:
+  - el_type: geth
+    el_image: ethpandaops/geth:glamsterdam-devnet-5
+    cl_type: lighthouse
+    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-5
+    validator_count: 32
+    count: 2
+    supernode: true
+
+  additional_services:
+    - dora
+
+  # dora's default image can't render Gloas blocks; pin the devnet-5 build.
+  dora_params:
+    image: ethpandaops/dora:master-0e63023
+
+  # 6.1.0's default generator (5.3.5) predates Gloas; pin the devnet-5 build.
+  ethereum_genesis_generator_params:
+    image: ethpandaops/ethereum-genesis-generator:6.0.8
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0        # Fulu must precede Gloas — activate at genesis
+    gloas_fork_epoch: 2       # ePBS fork; small so the transition lands a few minutes in (tune freely)
+    perfect_peerdas_enabled: false
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+monitor:
+  enabled: false
+
+boole_epoch: 0   # SSV Boole fork active from genesis (ePBS builds on Boole); default is disabled
+
+nodes:
+  ssv:
+    count: 4
+  anchor:
+    count: 0
+
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v1.2.0"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  deployer: "localssv/ssv-network"

@@ -185,6 +185,7 @@ help:
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu (all forks active)"
 	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
+	@echo "  make run-gloas                       Gloas/ePBS fork at epoch 2 (devnet-5 images)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
@@ -202,6 +203,11 @@ help:
 run-boole: ensure-keys
 	@echo "──── Starting SSV testnet (Boole fork at epoch 3) ────"
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-boole.yaml .
+
+.PHONY: run-gloas
+run-gloas: ensure-keys
+	@echo "──── Starting SSV testnet (Gloas/ePBS fork at epoch 2) ────"
+	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-gloas.yaml .
 
 # ── Tests ────────────────────────────────────────────────────────────
 
