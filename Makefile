@@ -134,8 +134,14 @@ prepare-monitor:
 	@echo "Building Monitor image..."
 	@cd ../ethereum2-monitor && docker build -t monitor .
 
+.PHONY: prepare-test
+prepare-test: prepare-ssv
+	@echo "Building SSV test image (node/ssv + iproute2 for tc/netem fault injection)..."
+	@docker build -f Dockerfile.test -t node/ssv-test .
+	@echo "Use 'make run PARAMS_FILE=params-network-faults.yaml' or set images.ssv: node/ssv-test in params.yaml"
+
 .PHONY: prepare-all
-prepare-all: prepare-ssv prepare-anchor prepare-monitor
+prepare-all: prepare-ssv prepare-anchor prepare-monitor prepare-test
 
 # ── Fault injection (EL node management) ─────────────────────────────
 
@@ -215,6 +221,7 @@ help:
 	@echo ""
 	@echo "Image building:"
 	@echo "  make prepare         Build SSV image (default: stage branch)"
+	@echo "  make prepare-test    Build SSV test image with iproute2 (node/ssv-test)"
 	@echo "  make prepare-anchor  Build Anchor image"
 	@echo "  make prepare-all     Build all images"
 	@echo ""
@@ -222,7 +229,7 @@ help:
 	@echo "  make run                             Default: Fulu at genesis"
 	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
 	@echo "  make run-gloas                       Gloas/ePBS fork at epoch 2 (devnet-6 images)"
-	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
+	@echo "  make run PARAMS_FILE=custom.yaml     Custom params; params-network-faults.yaml for ssv image with iproute2"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  SSV_COMMIT=main make prepare   Use a specific SSV branch"

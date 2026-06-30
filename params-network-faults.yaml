@@ -1,0 +1,47 @@
+# Default network: Fulu (all forks active at genesis)
+# For fork transition testing, use: make run-boole
+# https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
+
+network:
+  participants:
+  - el_type: geth
+    el_image: ethereum/client-go:v1.16.7
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:v8.0.1
+    validator_count: 32
+    count: 2
+    supernode: true
+
+  additional_services:
+    - dora
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0
+    perfect_peerdas_enabled: false
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+monitor:
+  enabled: true
+
+nodes:
+  ssv:
+    count: 4      # Valid total (ssv+anchor): 4, 7, 10, 13 (3f+1 for BFT)
+  anchor:
+    count: 0
+
+images:
+  ssv: "node/ssv-test"
+  anchor: "sigp/anchor:v1.2.0"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  foundry: "localssv/ssv-network"
