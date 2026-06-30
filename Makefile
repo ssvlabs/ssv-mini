@@ -2,6 +2,10 @@ ENCLAVE_NAME?=localnet
 PARAMS_FILE?=params.yaml
 SSV_NODE_COUNT?=4
 SSV_COMMIT?=stage
+# Minimum free disk (GiB) in the Docker VM before a run. Geth self-terminates below its
+# ~1.62GiB low-disk safety threshold, which freezes the chain mid-run (EL gone → CL gets no
+# payloads). Guarded with headroom by check-deps; override for tiny/large runs.
+MIN_DISK_GIB?=10
 
 default: run
 
@@ -15,6 +19,17 @@ check-deps:
 	@command -v docker >/dev/null 2>&1 || { echo "Error: docker not found. Install: https://docs.docker.com/get-docker/"; exit 1; }
 	@command -v kurtosis >/dev/null 2>&1 || { echo "Error: kurtosis not found. Install: https://docs.kurtosis.com/install"; exit 1; }
 	@docker info >/dev/null 2>&1 || { echo "Error: Docker daemon not running. Start Docker/OrbStack first."; exit 1; }
+# Approximate free space in the Docker storage backend: the alpine overlay and Kurtosis volumes
+# (where geth's chaindata lives) share the VM data-root on Docker Desktop/OrbStack, so this is a
+# good proxy rather than an exact volume measurement. Fails open — if `docker run` can't execute
+# (offline, registry/proxy blocked) avail is empty and the check is skipped, not failed.
+	@avail=$$(docker run --rm alpine df -P / 2>/dev/null | awk 'NR==2{printf "%d", $$4/1024/1024}'); \
+	if [ -n "$$avail" ] && [ "$$avail" -lt "$(MIN_DISK_GIB)" ]; then \
+		echo "Error: Docker storage backend has only ~$${avail}GiB free (need >= $(MIN_DISK_GIB)GiB)."; \
+		echo "  Geth self-terminates below ~1.62GiB free (low-disk safety), freezing the chain mid-run."; \
+		echo "  Free space:  docker builder prune -af && docker system prune -f   (or raise Docker Desktop's disk image size)."; \
+		exit 1; \
+	fi
 
 .PHONY: run
 run: check-deps ensure-keys
@@ -185,6 +200,7 @@ help:
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu (all forks active)"
 	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
+	@echo "  make run-gloas                       Gloas/ePBS fork at epoch 2 (devnet-5 images)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
@@ -199,9 +215,14 @@ help:
 # ── Network scenarios ────────────────────────────────────────────────
 
 .PHONY: run-boole
-run-boole: ensure-keys
+run-boole: check-deps ensure-keys
 	@echo "──── Starting SSV testnet (Boole fork at epoch 3) ────"
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-boole.yaml .
+
+.PHONY: run-gloas
+run-gloas: check-deps ensure-keys
+	@echo "──── Starting SSV testnet (Gloas/ePBS fork at epoch 2) ────"
+	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-gloas.yaml .
 
 # ── Tests ────────────────────────────────────────────────────────────
 
