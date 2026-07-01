@@ -3,12 +3,15 @@
 #        (or: make run PARAMS_FILE=params-gloas.yaml)
 #
 # Clients: ethpandaops glamsterdam-devnet-6 builds — the stock geth/lighthouse releases used by
-# params.yaml do NOT implement EIP-7732. devnet-6 is the live target (devnet-5 is superseded). Heads-up:
-# devnet-6 evolved the Gloas block wire format vs devnet-5 — the SSV node's §4 block SUBMIT
-# (POST /eth/v2/beacon/blocks) is currently rejected as invalid SSZ until the node's Gloas block type
-# catches up to the post-beacon-APIs#580 spec (§4 produce + sign already work; the §6 envelope reveal is
-# downstream of a landed block). The genesis generator is pinned to a Gloas-aware build (the
-# ethereum-package@6.1.0 default, 5.3.5, predates Gloas).
+# params.yaml do NOT implement EIP-7732. devnet-6 is the live target (devnet-5 is superseded).
+# §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-6 (blocks land
+# canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
+# three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
+# §6 status: blocked UPSTREAM — lighthouse v8.2.0 does not implement the beacon-APIs#580 envelope-produce
+# endpoint (GET .../execution_payload_envelopes/{slot}/{root} -> 404), so the ENVELOPE_BUILDER duty can't
+# fetch the envelope to publish. The node calls the spec'd #580 endpoints; §6 unblocks when a lighthouse
+# build ships them. The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0
+# default, 5.3.5, predates Gloas).
 #
 # Heads-up — the devnet image tags below (glamsterdam-devnet-6 for geth/lighthouse, dora master-*)
 # are MOVING targets that ethpandaops re-pushes as the devnet advances; they're left unpinned on
