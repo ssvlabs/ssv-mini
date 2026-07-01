@@ -2,14 +2,18 @@
 # Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas
 #        (or: make run PARAMS_FILE=params-gloas.yaml)
 #
-# Clients: ethpandaops glamsterdam-devnet-5 builds — the stock geth/lighthouse releases used by
-# params.yaml do NOT implement EIP-7732. The genesis generator is pinned to a Gloas-aware build
-# (the ethereum-package@6.1.0 default, 5.3.5, predates Gloas).
+# Clients: ethpandaops glamsterdam-devnet-6 builds — the stock geth/lighthouse releases used by
+# params.yaml do NOT implement EIP-7732. devnet-6 is the live target (devnet-5 is superseded). Heads-up:
+# devnet-6 evolved the Gloas block wire format vs devnet-5 — the SSV node's §4 block SUBMIT
+# (POST /eth/v2/beacon/blocks) is currently rejected as invalid SSZ until the node's Gloas block type
+# catches up to the post-beacon-APIs#580 spec (§4 produce + sign already work; the §6 envelope reveal is
+# downstream of a landed block). The genesis generator is pinned to a Gloas-aware build (the
+# ethereum-package@6.1.0 default, 5.3.5, predates Gloas).
 #
-# Heads-up — the devnet image tags below (glamsterdam-devnet-5 for geth/lighthouse, dora master-*)
+# Heads-up — the devnet image tags below (glamsterdam-devnet-6 for geth/lighthouse, dora master-*)
 # are MOVING targets that ethpandaops re-pushes as the devnet advances; they're left unpinned on
-# purpose to track devnet-5. If a future run breaks genesis or the transition, a re-pushed image is
-# a prime suspect — refresh the tags, or pin a @sha256: digest once devnet-5 stabilizes.
+# purpose to track devnet-6. If a future run breaks genesis or the transition, a re-pushed image is
+# a prime suspect — refresh the tags, or pin a @sha256: digest once devnet-6 stabilizes.
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
@@ -22,9 +26,9 @@
 network:
   participants:
   - el_type: geth
-    el_image: ethpandaops/geth:glamsterdam-devnet-5
+    el_image: ethpandaops/geth:glamsterdam-devnet-6
     cl_type: lighthouse
-    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-5
+    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-6
     validator_count: 32
     count: 2
     supernode: true
