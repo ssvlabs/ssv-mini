@@ -7,11 +7,18 @@
 # §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-6 (blocks land
 # canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
-# §6 status: blocked UPSTREAM — lighthouse v8.2.0 does not implement the beacon-APIs#580 envelope-produce
-# endpoint (GET .../execution_payload_envelopes/{slot}/{root} -> 404), so the ENVELOPE_BUILDER duty can't
-# fetch the envelope to publish. The node calls the spec'd #580 endpoints; §6 unblocks when a lighthouse
-# build ships them. The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0
-# default, 5.3.5, predates Gloas).
+# One wrinkle since seen on Lodestar: the redundant all-operator submits 500 with BLOCK_ERROR_ALREADY_KNOWN
+# (the block still lands) — the "BN dedupes by root" assumption doesn't hold there (ssvlabs/ssv#2922).
+# §6 status: split by CL, not a single upstream gap. lighthouse v8.2.0 (this file's pin) does NOT implement
+# the beacon-APIs#580 envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root} -> 404),
+# so the ENVELOPE_BUILDER duty can't even fetch the envelope. Lodestar v1.43.0 (the live devnet-6 CL) DOES
+# implement produce — the envelope builds — but then rejects the node's BLINDED publish body
+# (POST .../execution_payload_envelopes -> 400 "Offset out of bounds"): it wants the stateless
+# SignedExecutionPayloadEnvelopeContents. So the real §6 blocker is the node's publish body (ssvlabs/ssv#2921),
+# not just a missing lighthouse endpoint — swap cl_type to lodestar to reach the produce+publish path (needs
+# the CL-agnostic EL lookup, ssvlabs/aetheria#136).
+# The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
+# predates Gloas).
 #
 # Heads-up — the devnet image tags below (glamsterdam-devnet-6 for geth/lighthouse, dora master-*)
 # are MOVING targets that ethpandaops re-pushes as the devnet advances; they're left unpinned on
@@ -22,9 +29,21 @@
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
 # ePBS builds on) must be active, though — hence boole_epoch: 0 (default is disabled).
 #
-# Monitor (E2M) is disabled: the ethereum2-monitor image cannot parse Fulu/Gloas beacon blocks
-# (it decodes via go-eth2-client, which has no Gloas types). Observe ePBS via the SSV node logs
-# and dora. Re-enable once E2M gains Gloas support.
+# Monitor (E2M) is disabled on this net — historically because the monitor couldn't decode GLOAS blocks
+# (go-eth2-client v0.28.1 has no Gloas types → it FATAL'd on the post-fork epochs). ethereum2-monitor#504
+# (merged) fixes that with a Gloas block decode for attestation validation. Fulu is NOT a blocker: it's
+# decoded natively (go-eth2-client v0.28.1 has first-class Fulu types, and the monitor has beacon/fulu.go
+# + Fulu cases in its block/resolver switches), so a #504-inclusive monitor handles this net's Fulu
+# (epochs 0-1) AND Gloas (epoch 2+) blocks. ssv-mini builds the monitor from origin/main, so its image
+# already includes #504.
+# E2M is ENABLED below. Validated live — E2M §2 attestation confirmation works on Gloas (the first live
+# exercise of #504's Gloas block decode + store.SaveBlock); tracked in ssvlabs/aetheria#137. Dependency: a
+# gloas (event) run also needs the executor's local_testnet E2M-removal-skip — the strict removal "eviction"
+# teardown check (attestations.Assigned→0) false-fails across the WHOLE local_testnet family (NOT
+# Gloas-specific; Loki still verifies removal there), so it's skipped on local; without that executor fix the
+# run reds on the removal teardown despite §2 passing. Caveat: on Gloas the execution payload moves to the §6 envelope, so #504 stubs exec-data
+# (fee-recipient / block-number / txs / MEV) — E2M's EXECUTION checks stay degraded until sourced from the
+# envelope; §2 ATTESTATION validation is unaffected. Meanwhile, observe ePBS via the SSV node logs and dora.
 
 network:
   participants:
@@ -63,7 +82,7 @@ network:
 use_static_keys: true
 
 monitor:
-  enabled: false
+  enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
 
 boole_epoch: 0   # SSV Boole fork active from genesis (ePBS builds on Boole); default is disabled
 
