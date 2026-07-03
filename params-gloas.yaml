@@ -7,26 +7,25 @@
 # §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-6 (blocks land
 # canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
-# One wrinkle since seen on Lodestar: the redundant all-operator submits 500 with BLOCK_ERROR_ALREADY_KNOWN
-# (the block still lands) — the "BN dedupes by root" assumption doesn't hold there (ssvlabs/ssv#2922).
-# (Lodestar provenance, here and in §6: this file pins lighthouse — the Lodestar findings come from local
-# runs of this net with cl_type swapped to lodestar, not from the public devnet; Lodestar matters because
-# it's the CL the live glamsterdam-devnet-6 runs.)
-# §6 status: split by CL, not a single upstream gap. lighthouse v8.2.0 (this file's pin) does NOT implement
-# the beacon-APIs#580 envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root} -> 404),
-# so the ENVELOPE_BUILDER duty can't even fetch the envelope. Lodestar v1.43.0 DOES
-# implement produce — the envelope builds — but then rejects the node's BLINDED publish body
-# (POST .../execution_payload_envelopes -> 400 "Offset out of bounds"): it wants the stateless
-# SignedExecutionPayloadEnvelopeContents. So the real §6 blocker is the node's publish body (ssvlabs/ssv#2921),
-# not just a missing lighthouse endpoint — swap cl_type to lodestar to reach the produce+publish path (needs
-# the CL-agnostic EL lookup, ssvlabs/aetheria#136).
+# One wrinkle seen on Lodestar: it 500s the redundant all-operator submits with BLOCK_ERROR_ALREADY_KNOWN
+# (the block still lands) — the "BN dedupes by root" assumption doesn't hold there (ssvlabs/ssv#2922);
+# the node treats already-known as submit success, so the redundant §4 submits no longer error.
+# §6 status: works END-TO-END on Lodestar (this file's pin) — produce (beacon-APIs#580) + publish. The
+# node's earlier blinded publish body was rejected by Lodestar (ssvlabs/ssv#2921; fixed — it posts the
+# full signed envelope), and the redundant all-operator envelope publishes hit
+# EXECUTION_PAYLOAD_ENVELOPE_ERROR_ALREADY_KNOWN — treated as success since ssvlabs/ssv#2923, validated
+# on this net: a (ptc),(proposer) run published 4/4 envelopes with zero submit errors. lighthouse v8.2.0
+# does NOT implement the envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root}
+# -> 404), so §6 is unreachable there — hence the Lodestar pin below (v1.43.0, digest-pinned; needs the
+# CL-agnostic EL lookup, ssvlabs/aetheria#136). Earlier Lodestar findings came from local runs with
+# cl_type swapped; the pin just makes that the default.
 # The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
 # predates Gloas).
 #
-# Heads-up — the geth/lighthouse tags below (glamsterdam-devnet-6) are MOVING targets that ethpandaops
-# re-pushes as the devnet advances; they're left unpinned on purpose to track devnet-6. If a future run
-# breaks genesis or the transition, a re-pushed image is a prime suspect — refresh the tags, or pin a
-# @sha256: digest once devnet-6 stabilizes. (dora + the genesis generator are pinned to fixed builds below.)
+# Heads-up — the geth tag below (glamsterdam-devnet-6) is a MOVING target that ethpandaops re-pushes as
+# the devnet advances; it's left unpinned on purpose to track devnet-6. If a future run breaks genesis or
+# the transition, a re-pushed image is a prime suspect — refresh the tag, or pin a @sha256: digest once
+# devnet-6 stabilizes. (The CL is digest-pinned; dora + the genesis generator are pinned to fixed builds below.)
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
@@ -52,8 +51,10 @@ network:
   participants:
   - el_type: geth
     el_image: ethpandaops/geth:glamsterdam-devnet-6
-    cl_type: lighthouse
-    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-6
+    cl_type: lodestar
+    # Digest-pinned Lodestar v1.43.0 (v1.43.0/e9cbf75) — the CL that implements §6 produce+publish
+    # (lighthouse v8.2.0 lacks the produce endpoint); pinned at the digest the ssv#2923 validation ran on.
+    cl_image: ethpandaops/lodestar@sha256:8126f8de5262379d7a0438912dfe958fa7fa3cab7197efeae6636e012f82da66
     validator_count: 32
     count: 2
     supernode: true
