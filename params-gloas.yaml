@@ -20,16 +20,16 @@
 # The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
 # predates Gloas).
 #
-# Heads-up — the devnet image tags below (glamsterdam-devnet-6 for geth/lighthouse, dora master-*)
-# are MOVING targets that ethpandaops re-pushes as the devnet advances; they're left unpinned on
-# purpose to track devnet-6. If a future run breaks genesis or the transition, a re-pushed image is
-# a prime suspect — refresh the tags, or pin a @sha256: digest once devnet-6 stabilizes.
+# Heads-up — the geth/lighthouse tags below (glamsterdam-devnet-6) are MOVING targets that ethpandaops
+# re-pushes as the devnet advances; they're left unpinned on purpose to track devnet-6. If a future run
+# breaks genesis or the transition, a re-pushed image is a prime suspect — refresh the tags, or pin a
+# @sha256: digest once devnet-6 stabilizes. (dora + the genesis generator are pinned to fixed builds below.)
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
 # ePBS builds on) must be active, though — hence boole_epoch: 0 (default is disabled).
 #
-# Monitor (E2M) is disabled on this net — historically because the monitor couldn't decode GLOAS blocks
+# Monitor (E2M) was historically disabled on this net — the monitor couldn't decode GLOAS blocks
 # (go-eth2-client v0.28.1 has no Gloas types → it FATAL'd on the post-fork epochs). ethereum2-monitor#504
 # (merged) fixes that with a Gloas block decode for attestation validation. Fulu is NOT a blocker: it's
 # decoded natively (go-eth2-client v0.28.1 has first-class Fulu types, and the monitor has beacon/fulu.go
@@ -58,11 +58,11 @@ network:
   additional_services:
     - dora
 
-  # dora's default image can't render Gloas blocks; pin the devnet-5 build.
+  # dora's default image can't render Gloas blocks; pin a Gloas-capable master build.
   dora_params:
     image: ethpandaops/dora:master-0e63023
 
-  # 6.1.0's default generator (5.3.5) predates Gloas; pin the devnet-5 build.
+  # Pin a Gloas-aware generator build (rationale in the header).
   ethereum_genesis_generator_params:
     image: ethpandaops/ethereum-genesis-generator:6.0.8
 
