@@ -53,9 +53,9 @@ make help
 
 | Command | Description |
 |---------|-------------|
-| `make run` | Start testnet (default: Fulu, all forks active) |
+| `make run` | Start testnet (default: Electra genesis, Fulu deferred) |
 | `make run-boole` | Start with Boole fork at epoch 3, Fulu at epoch 5 |
-| `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 (devnet-5 images) |
+| `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 (devnet-6 images) |
 | `make reset` | Clean + restart from genesis |
 | `make show` | Show running services and ports |
 | `make logs` | Tail ssv-node-0 logs (`SERVICE=ssv-node-1` for others) |
@@ -98,9 +98,9 @@ use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 ```
 
 Pre-built configs:
-- `params.yaml` — Fulu at genesis (default)
+- `params.yaml` — Electra genesis, Fulu deferred (default)
 - `params-boole.yaml` — Electra→Boole→Fulu fork transitions
-- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-5 client images (monitor/E2M disabled — can't parse Gloas)
+- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (monitor/E2M enabled)
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml

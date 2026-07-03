@@ -198,7 +198,7 @@ help:
 	@echo "  make prepare-all     Build all images"
 	@echo ""
 	@echo "Network scenarios:"
-	@echo "  make run                             Default: Fulu (all forks active)"
+	@echo "  make run                             Default: Electra genesis (Fulu deferred)"
 	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
 	@echo "  make run-gloas                       Gloas/ePBS fork at epoch 2 (devnet-6 images)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"

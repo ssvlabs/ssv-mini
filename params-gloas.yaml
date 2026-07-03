@@ -9,9 +9,12 @@
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
 # One wrinkle since seen on Lodestar: the redundant all-operator submits 500 with BLOCK_ERROR_ALREADY_KNOWN
 # (the block still lands) — the "BN dedupes by root" assumption doesn't hold there (ssvlabs/ssv#2922).
+# (Lodestar provenance, here and in §6: this file pins lighthouse — the Lodestar findings come from local
+# runs of this net with cl_type swapped to lodestar, not from the public devnet; Lodestar matters because
+# it's the CL the live glamsterdam-devnet-6 runs.)
 # §6 status: split by CL, not a single upstream gap. lighthouse v8.2.0 (this file's pin) does NOT implement
 # the beacon-APIs#580 envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root} -> 404),
-# so the ENVELOPE_BUILDER duty can't even fetch the envelope. Lodestar v1.43.0 (the live devnet-6 CL) DOES
+# so the ENVELOPE_BUILDER duty can't even fetch the envelope. Lodestar v1.43.0 DOES
 # implement produce — the envelope builds — but then rejects the node's BLINDED publish body
 # (POST .../execution_payload_envelopes -> 400 "Offset out of bounds"): it wants the stateless
 # SignedExecutionPayloadEnvelopeContents. So the real §6 blocker is the node's publish body (ssvlabs/ssv#2921),
