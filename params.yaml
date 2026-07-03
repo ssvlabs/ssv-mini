@@ -1,11 +1,11 @@
-# Network forks: genesis at Electra (deneb + electra at epoch 0); Fulu is deferred far beyond
-# any test run. The deferral is historical: it dates to an ethereum2-monitor (E2M) build that
-# couldn't parse Fulu blocks (its indexer FATAL'd with "unknown SignedBeaconBlock version fulu").
-# Current E2M builds decode Fulu natively (go-eth2-client v0.28.1 + beacon/fulu.go) — proven live
-# on the params-gloas.yaml net, where E2M runs through Fulu epochs 0-1 en route to Gloas
-# (ssvlabs/aetheria#137) — so E2M no longer forces Electra-only; the deferral stays only pending
-# a Fulu-at-genesis validation run. To test Fulu now, set fulu_fork_epoch to 0 (genesis) or a
-# small epoch (Electra→Fulu transition).
+# Network forks: genesis at Fulu (deneb + electra + fulu all at epoch 0) — the default net runs
+# the current fork out of the box. Fulu was historically deferred (fulu_fork_epoch: 100000)
+# because an old ethereum2-monitor (E2M) build couldn't parse Fulu blocks (its indexer FATAL'd
+# with "unknown SignedBeaconBlock version fulu"). Current E2M builds decode Fulu natively
+# (go-eth2-client v0.28.1 + beacon/fulu.go): proven on the params-gloas.yaml net (Fulu epochs 0-1
+# en route to Gloas, ssvlabs/aetheria#137), then validated on THIS net by a Fulu-at-genesis
+# aetheria (event) run — E2M attestation validation green, zero monitor decode failures. To pin
+# the old Electra-only behavior, set fulu_fork_epoch to a large value (e.g. 100000).
 # https://github.com/ethpandaops/ethereum-package/blob/main/network_params.yaml
 
 network:
@@ -25,7 +25,7 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 100000
+    fulu_fork_epoch: 0
     perfect_peerdas_enabled: false
     # Indices 64-73 are reserved for the aetheria local_testnet seed: deposited-but-VC-idle
     # validators the SSV operators adopt (ssvlabs/aetheria orchestrator/script/insert_test_data.sql).

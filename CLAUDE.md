@@ -53,7 +53,7 @@ Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
 - `boole_epoch`: Boole fork activation epoch
-- `network.network_params.fulu_fork_epoch`: Set >0 to test Electra→Fulu transition
+- `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
 - `monitor.enabled`: Enable monitoring stack
 - `images.*`: Docker image overrides
 
