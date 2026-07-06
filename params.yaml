@@ -38,7 +38,17 @@ network:
     cl:
       enabled: true
 
+# use_static_keys loads pre-computed operator keys (static/keys/operator-0..3) and a fixed keyshare
+# set (static/keyshares/out.json: 10 validators split across operators [1,2,3,4]). Only 4 static
+# operator key sets exist, so the total cluster size (ssv + anchor nodes) must be 4. Set false to
+# generate operators and keyshares dynamically for the larger BFT sizes (7/10/13).
 use_static_keys: true
+
+# pre_register_validators drives main.star Step 4: registering the keyshare validators on-chain.
+# Default false preserves the aetheria flow (its executor registers and funds its own validators and
+# expects a clean cluster). A standalone `kurtosis run` (no executor) needs this true so operators
+# actually run validators; consumers gating CI without aetheria (e.g. sigp/anchor) opt in. See #29.
+pre_register_validators: false
 
 # The ethereum2-monitor (E2M) indexes SSV validator attestations and serves the
 # /api/stats API that the aetheria executor's E2M validation polls. Enabled so the

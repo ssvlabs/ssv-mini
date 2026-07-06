@@ -118,11 +118,26 @@ def run(plan, args):
         plan.remove_service(constants.ANCHOR_KEYSPLIT_SERVICE, description="Cleaning up keysplit service")
 
     # ── Step 4: Register validators on-chain ──
-    # Skipped on the v2.0.0 contracts: the aetheria executor registers and funds its own validators
-    # (registration is payable/msg.value on v2.0.0), and its event flow expects a clean, empty
-    # cluster. Devnet pre-registration of the static keyshares (the payable-deposit path) is tracked
-    # in ssvlabs/ssv-mini#29.
-    plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
+    # Default: skipped on the v2.0.0 contracts. The aetheria executor registers and funds its own
+    # validators (registration is payable/msg.value on v2.0.0) and expects a clean, empty cluster.
+    #
+    # Opt-in pre-registration (pre_register_validators: true): register the static keyshares on-chain
+    # here so a standalone `kurtosis run` (no aetheria) yields operators that actually run validators.
+    # Needed by consumers that gate CI on this testnet without the executor (e.g. sigp/anchor). This
+    # is the devnet pre-registration path tracked in ssvlabs/ssv-mini#29.
+    if args.get("pre_register_validators", False):
+        plan.print("Step 4/5: Pre-registering validators on-chain (pre_register_validators=true)")
+        interactions.register_validators(
+            plan,
+            keyshare_artifact,
+            constants.SSV_NETWORK_PROXY_CONTRACT,
+            constants.SSV_TOKEN_CONTRACT,
+            el_rpc,
+            genesis_constants,
+            args,
+        )
+    else:
+        plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
 
     # ── Step 5: Start SSV and Anchor nodes ──
     node_index = 0
