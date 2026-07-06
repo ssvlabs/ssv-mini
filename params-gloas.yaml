@@ -2,29 +2,59 @@
 # Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas
 #        (or: make run PARAMS_FILE=params-gloas.yaml)
 #
-# Clients: ethpandaops glamsterdam-devnet-5 builds — the stock geth/lighthouse releases used by
-# params.yaml do NOT implement EIP-7732. The genesis generator is pinned to a Gloas-aware build
-# (the ethereum-package@6.1.0 default, 5.3.5, predates Gloas).
+# Clients: ethpandaops glamsterdam-devnet-6 builds — the stock geth/lighthouse releases used by
+# params.yaml do NOT implement EIP-7732. devnet-6 is the live target (devnet-5 is superseded).
+# §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-6 (blocks land
+# canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
+# three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
+# One wrinkle seen on Lodestar: it 500s the redundant all-operator submits with BLOCK_ERROR_ALREADY_KNOWN
+# (the block still lands) — the "BN dedupes by root" assumption doesn't hold there (ssvlabs/ssv#2922);
+# the node treats already-known as submit success, so the redundant §4 submits no longer error.
+# §6 status: works END-TO-END on Lodestar (this file's pin) — produce (beacon-APIs#580) + publish. The
+# node's earlier blinded publish body was rejected by Lodestar (ssvlabs/ssv#2921; fixed — it posts the
+# full signed envelope), and the redundant all-operator envelope publishes hit
+# EXECUTION_PAYLOAD_ENVELOPE_ERROR_ALREADY_KNOWN — treated as success since ssvlabs/ssv#2923, validated
+# on this net: a (ptc),(proposer) run published 4/4 envelopes with zero submit errors. lighthouse v8.2.0
+# does NOT implement the envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root}
+# -> 404), so §6 is unreachable there — hence the Lodestar pin below (v1.43.0, digest-pinned; needs the
+# CL-agnostic EL lookup, ssvlabs/aetheria#136). Earlier Lodestar findings came from local runs with
+# cl_type swapped; the pin just makes that the default.
+# The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
+# predates Gloas).
 #
-# Heads-up — the devnet image tags below (glamsterdam-devnet-5 for geth/lighthouse, dora master-*)
-# are MOVING targets that ethpandaops re-pushes as the devnet advances; they're left unpinned on
-# purpose to track devnet-5. If a future run breaks genesis or the transition, a re-pushed image is
-# a prime suspect — refresh the tags, or pin a @sha256: digest once devnet-5 stabilizes.
+# Heads-up — the geth tag below (glamsterdam-devnet-6) is a MOVING target that ethpandaops re-pushes as
+# the devnet advances; it's left unpinned on purpose to track devnet-6. If a future run breaks genesis or
+# the transition, a re-pushed image is a prime suspect — refresh the tag, or pin a @sha256: digest once
+# devnet-6 stabilizes. (The CL is digest-pinned; dora + the genesis generator are pinned to fixed builds below.)
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
 # ePBS builds on) must be active, though — hence boole_epoch: 0 (default is disabled).
 #
-# Monitor (E2M) is disabled: the ethereum2-monitor image cannot parse Fulu/Gloas beacon blocks
-# (it decodes via go-eth2-client, which has no Gloas types). Observe ePBS via the SSV node logs
-# and dora. Re-enable once E2M gains Gloas support.
+# Monitor (E2M) was historically disabled on this net — the monitor couldn't decode GLOAS blocks
+# (go-eth2-client v0.28.1 has no Gloas types → it FATAL'd on the post-fork epochs). ethereum2-monitor#504
+# (merged) fixes that with a Gloas block decode for attestation validation. Fulu is NOT a blocker: it's
+# decoded natively (go-eth2-client v0.28.1 has first-class Fulu types, and the monitor has beacon/fulu.go
+# + Fulu cases in its block/resolver switches), so a #504-inclusive monitor handles this net's Fulu
+# (epochs 0-1) AND Gloas (epoch 2+) blocks. ssv-mini builds the monitor from origin/main, so its image
+# already includes #504.
+# E2M is ENABLED below. Validated live — E2M §2 attestation confirmation works on Gloas (the first live
+# exercise of #504's Gloas block decode + store.SaveBlock); tracked in ssvlabs/aetheria#137. Dependency: a
+# gloas (event) run also needs the executor's local_testnet E2M-removal-skip — the strict removal "eviction"
+# teardown check (attestations.Assigned→0) false-fails across the WHOLE local_testnet family (NOT
+# Gloas-specific; Loki still verifies removal there), so it's skipped on local; without that executor fix the
+# run reds on the removal teardown despite §2 passing. Caveat: on Gloas the execution payload moves to the §6 envelope, so #504 stubs exec-data
+# (fee-recipient / block-number / txs / MEV) — E2M's EXECUTION checks stay degraded until sourced from the
+# envelope; §2 ATTESTATION validation is unaffected. Meanwhile, observe ePBS via the SSV node logs and dora.
 
 network:
   participants:
   - el_type: geth
-    el_image: ethpandaops/geth:glamsterdam-devnet-5
-    cl_type: lighthouse
-    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-5
+    el_image: ethpandaops/geth:glamsterdam-devnet-6
+    cl_type: lodestar
+    # Digest-pinned Lodestar v1.43.0 (v1.43.0/e9cbf75) — the CL that implements §6 produce+publish
+    # (lighthouse v8.2.0 lacks the produce endpoint); pinned at the digest the ssv#2923 validation ran on.
+    cl_image: ethpandaops/lodestar@sha256:8126f8de5262379d7a0438912dfe958fa7fa3cab7197efeae6636e012f82da66
     validator_count: 32
     count: 2
     supernode: true
@@ -32,11 +62,11 @@ network:
   additional_services:
     - dora
 
-  # dora's default image can't render Gloas blocks; pin the devnet-5 build.
+  # dora's default image can't render Gloas blocks; pin a Gloas-capable master build.
   dora_params:
     image: ethpandaops/dora:master-0e63023
 
-  # 6.1.0's default generator (5.3.5) predates Gloas; pin the devnet-5 build.
+  # Pin a Gloas-aware generator build (rationale in the header).
   ethereum_genesis_generator_params:
     image: ethpandaops/ethereum-genesis-generator:6.0.8
 
@@ -56,7 +86,7 @@ network:
 use_static_keys: true
 
 monitor:
-  enabled: false
+  enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
 
 boole_epoch: 0   # SSV Boole fork active from genesis (ePBS builds on Boole); default is disabled
 
