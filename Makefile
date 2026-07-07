@@ -31,10 +31,31 @@ check-deps:
 		exit 1; \
 	fi
 
+# Optional params overrides, substituted into a generated copy of PARAMS_FILE (the sources stay
+# untouched). GLOAS_FORK_EPOCH retunes the ePBS fork (gloas params only); PRE_REGISTER_VALIDATORS
+# bulk-registers the static keyshares at bring-up (see main.star Step 4).
+GLOAS_FORK_EPOCH?=
+PRE_REGISTER_VALIDATORS?=
+GENERATED_PARAMS=.params.generated.yaml
+
 .PHONY: run
 run: check-deps ensure-keys
-	@echo "──── Starting SSV testnet ────"
-	kurtosis run --enclave $(ENCLAVE_NAME) --args-file $(PARAMS_FILE) .
+	@PARAMS="$(PARAMS_FILE)"; \
+	if [ -n "$(GLOAS_FORK_EPOCH)" ] || [ -n "$(PRE_REGISTER_VALIDATORS)" ]; then \
+		cp "$(PARAMS_FILE)" "$(GENERATED_PARAMS)"; \
+		if [ -n "$(GLOAS_FORK_EPOCH)" ]; then \
+			grep -q '^[[:space:]]*gloas_fork_epoch:' "$(GENERATED_PARAMS)" || { echo "Error: GLOAS_FORK_EPOCH set but $(PARAMS_FILE) has no gloas_fork_epoch key"; exit 1; }; \
+			sed -E 's|^([[:space:]]*gloas_fork_epoch:)[[:space:]]*[0-9]+.*|\1 $(GLOAS_FORK_EPOCH)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
+		fi; \
+		if [ -n "$(PRE_REGISTER_VALIDATORS)" ]; then \
+			grep -q '^pre_register_validators:' "$(GENERATED_PARAMS)" || { echo "Error: PRE_REGISTER_VALIDATORS set but $(PARAMS_FILE) has no pre_register_validators key"; exit 1; }; \
+			sed -E 's|^(pre_register_validators:).*|\1 $(PRE_REGISTER_VALIDATORS)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
+		fi; \
+		PARAMS="$(GENERATED_PARAMS)"; \
+		echo "──── Params overrides applied ($$PARAMS): GLOAS_FORK_EPOCH=$(GLOAS_FORK_EPOCH) PRE_REGISTER_VALIDATORS=$(PRE_REGISTER_VALIDATORS) ────"; \
+	fi; \
+	echo "──── Starting SSV testnet ────"; \
+	kurtosis run --enclave $(ENCLAVE_NAME) --args-file "$$PARAMS" .
 
 # reset rebuilds OUR enclave only: scoped teardown (ssv-mini-down) then run. Uses ssv-mini-down
 # rather than `clean` so a re-run on a shared host/CI runner doesn't wipe co-tenant enclaves.
@@ -215,14 +236,14 @@ help:
 # ── Network scenarios ────────────────────────────────────────────────
 
 .PHONY: run-boole
-run-boole: check-deps ensure-keys
+run-boole:
 	@echo "──── Starting SSV testnet (Boole fork at epoch 3) ────"
-	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-boole.yaml .
+	@$(MAKE) --no-print-directory run PARAMS_FILE=params-boole.yaml
 
 .PHONY: run-gloas
-run-gloas: check-deps ensure-keys
+run-gloas:
 	@echo "──── Starting SSV testnet (Gloas/ePBS fork at epoch 2) ────"
-	kurtosis run --enclave $(ENCLAVE_NAME) --args-file params-gloas.yaml .
+	@$(MAKE) --no-print-directory run PARAMS_FILE=params-gloas.yaml
 
 # ── Tests ────────────────────────────────────────────────────────────
 
