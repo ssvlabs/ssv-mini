@@ -39,12 +39,13 @@ def register_operators(plan, public_keys, network_address):
 # register_validators bulk-registers the keyshare validators on-chain via the ethers script
 # (register-validators.cjs) in a node-based service with the keyshares mounted.
 #
-# UNUSED: validator pre-registration is skipped on local_testnet (main.star Step 4) — the aetheria
-# executor registers and funds its own validators. Retained (with register-validators.cjs) pending
-# devnet pre-registration, tracked under #29.
-def register_validators(plan, keyshare_artifact, network_address, token_address, rpc, genesis_constants, args):
+# Gated behind pre_register_validators (default off, main.star Step 4): when set, bulk-registers
+# the static keyshares on-chain at bring-up so a standalone `kurtosis run` (no aetheria executor)
+# yields operators that actually run validators. Off by default because the executor registers and
+# funds its own validators. Devnet pre-registration tracked under #29.
+def register_validators(plan, keyshare_artifact, network_address, rpc, genesis_constants, args):
     plan.add_service(
-        name="register-validator",
+        name=constants.REGISTER_VALIDATOR_SERVICE_NAME,
         config=ServiceConfig(
             image=utils.get_deployer_image_spec(args),
             entrypoint=["tail", "-f", "/dev/null"],
@@ -52,7 +53,6 @@ def register_validators(plan, keyshare_artifact, network_address, token_address,
                 "LOCAL_RPC_URL": rpc,
                 "LOCAL_DEPLOYER_KEY": genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
                 "SSV_NETWORK_ADDRESS": network_address,
-                "SSV_TOKEN_ADDRESS": token_address,
                 "KEYSHARES_FILE": "/app/keyshares/out.json",
             },
             files={
@@ -64,7 +64,7 @@ def register_validators(plan, keyshare_artifact, network_address, token_address,
     )
 
     plan.exec(
-        service_name="register-validator",
+        service_name=constants.REGISTER_VALIDATOR_SERVICE_NAME,
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "node /app/registration/register-validators.cjs"],
         ),

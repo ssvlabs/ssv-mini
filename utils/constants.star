@@ -10,3 +10,4 @@ ANCHOR_KEYSPLIT_SERVICE = "anchor-keysplit"
 ANCHOR_CLI_SERVICE_NAME = "anchor"
 
 DEPLOYER_SERVICE_NAME = "deployer"  # kurtosis service running the contract deployer
+REGISTER_VALIDATOR_SERVICE_NAME = "register-validator"  # kurtosis service running validator pre-registration
