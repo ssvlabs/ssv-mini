@@ -24,9 +24,11 @@ async function main() {
   const cluster = { validatorCount: 0, networkFeeIndex: 0, index: 0, active: true, balance: 0 };
 
   // v2.0.0 registration is payable: clusters are collateralized with ETH via msg.value (not SSV
-  // tokens), so send enough ETH to keep the cluster above the liquidation threshold.
-  await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value: ethers.parseEther("10") })).wait();
-  console.log("Registered " + publicKeys.length + " validator(s)");
+  // tokens). Scale the deposit with the validator count (~1 ETH/validator proven sufficient; 2x
+  // for headroom, 10 ETH floor) to stay above the liquidation threshold.
+  const collateral = ethers.parseEther(String(Math.max(10, publicKeys.length * 2)));
+  await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value: collateral })).wait();
+  console.log("Registered " + publicKeys.length + " validator(s) with " + ethers.formatEther(collateral) + " ETH collateral");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
