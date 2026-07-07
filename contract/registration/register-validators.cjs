@@ -16,6 +16,11 @@ async function main() {
   const wallet = new ethers.Wallet(KEY, provider);
   const ssv = new ethers.Contract(NETWORK_ADDR, abi, wallet);
 
+  // Register the FULL share set, always. Each entry's sharesData embeds a signature over
+  // (owner, nonce) as a strict sequence, so skipping any entry shifts every later share's
+  // expected nonce and the nodes reject the ValidatorAdded events with "malformed event:
+  // failed to verify signature": validators land on-chain but are never adopted (see
+  // ssvlabs/ssv-mini#36).
   const shares = JSON.parse(fs.readFileSync(KEYSHARES_FILE, "utf8")).shares;
   const publicKeys = shares.map((s) => s.payload.publicKey);
   const sharesData = shares.map((s) => s.payload.sharesData);
@@ -24,9 +29,10 @@ async function main() {
   const cluster = { validatorCount: 0, networkFeeIndex: 0, index: 0, active: true, balance: 0 };
 
   // v2.0.0 registration is payable: clusters are collateralized with ETH via msg.value (not SSV
-  // tokens). Scale the deposit with the validator count (~1 ETH/validator proven sufficient; 2x
-  // for headroom, 10 ETH floor) to stay above the liquidation threshold.
-  const collateral = ethers.parseEther(String(Math.max(10, publicKeys.length * 2)));
+  // tokens). 2.5 ETH/validator matches the aetheria executor's AMOUNT_PER_VALIDATOR (proven live
+  // to clear the liquidation threshold), keeping the two registration paths comparable when
+  // debugging cluster-balance issues.
+  const collateral = ethers.parseEther("2.5") * BigInt(publicKeys.length);
   await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value: collateral })).wait();
   console.log("Registered " + publicKeys.length + " validator(s) with " + ethers.formatEther(collateral) + " ETH collateral");
 }

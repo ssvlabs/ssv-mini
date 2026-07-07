@@ -125,17 +125,22 @@ def run(plan, args):
     # here so a standalone `kurtosis run` (no aetheria) yields operators that actually run validators.
     # Needed by consumers that gate CI on this testnet without the executor (e.g. sigp/anchor). This
     # is the devnet pre-registration path tracked in ssvlabs/ssv-mini#29.
+    #
+    # ON-mode contract: the static keyshares are the same validator pool (indices 64-73) the aetheria
+    # executor's validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) register at test time,
+    # so combining pre_register_validators: true with those suites on the same enclave reverts with
+    # ValidatorAlreadyExists. Use standard (flag-off) enclaves for those suites.
     if args.get("pre_register_validators", False):
         plan.print("Step 4/5: Pre-registering validators on-chain (pre_register_validators=true)")
         interactions.register_validators(
             plan,
             keyshare_artifact,
             constants.SSV_NETWORK_PROXY_CONTRACT,
-            constants.SSV_TOKEN_CONTRACT,
             el_rpc,
             genesis_constants,
             args,
         )
+        plan.remove_service(constants.REGISTER_VALIDATOR_SERVICE_NAME, description="Cleaning up validator registration service")
     else:
         plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
 

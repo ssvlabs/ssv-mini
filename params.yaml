@@ -48,6 +48,10 @@ use_static_keys: true
 # Default false preserves the aetheria flow (its executor registers and funds its own validators and
 # expects a clean cluster). A standalone `kurtosis run` (no executor) needs this true so operators
 # actually run validators; consumers gating CI without aetheria (e.g. sigp/anchor) opt in. See #29.
+# When true, the static keyshares occupy the same validator pool (indices 64-73) the executor's
+# validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) register at test time, so running
+# those suites against a flag-on enclave reverts with ValidatorAlreadyExists; use standard
+# (flag-off) enclaves for them.
 pre_register_validators: false
 
 # The ethereum2-monitor (E2M) indexes SSV validator attestations and serves the
