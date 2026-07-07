@@ -52,10 +52,19 @@ cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
 Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
+- `pre_register_validators`: Bulk-register the full static keyshare set on-chain at bring-up under the deployer's owner (default: false; needed for per-validator fork-transition coverage, aetheria#141 A2). Incompatible with the executor's validator-registering suites (`(event)`/`(ptc)`/`(proposer)`/`(p2p)`) on the same enclave — the shares' owner-nonce sequence forbids carving a subset out
 - `boole_epoch`: Boole fork activation epoch
 - `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
 - `monitor.enabled`: Enable monitoring stack
 - `images.*`: Docker image overrides
+
+Make-level overrides (substituted into a generated copy of `PARAMS_FILE`, sources untouched):
+- `GLOAS_FORK_EPOCH=N`: retune the ePBS fork epoch (gloas params only)
+- `PRE_REGISTER_VALIDATORS=true|false`: toggle the flag above without editing the file
+
+```bash
+make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDATORS=true
+```
 
 ## Architecture
 

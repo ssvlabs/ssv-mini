@@ -85,6 +85,13 @@ network:
 
 use_static_keys: true
 
+# pre_register_validators for the gloas net. See params.yaml for the flag's full semantics and its
+# incompatibility with the executor's validator-registering suites. Enabled here, the deployer
+# bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
+# from genesis — which the aetheria (transition) suite's per-validator fork-transition checks need
+# (aetheria#141 A2).
+pre_register_validators: false
+
 monitor:
   enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
 
