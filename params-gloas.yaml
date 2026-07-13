@@ -92,6 +92,20 @@ use_static_keys: true
 # (aetheria#141 A2).
 pre_register_validators: false
 
+# unsafe_skip_validator_layout_guard bypasses main.star's 64/74 validator-layout guard so a STANDALONE
+# base-chain liveness probe can run more than 64 baseline validators (ssvlabs/ssv-mini#38: does the
+# Gloas/ePBS devnet stall ~1.4 epochs past the fork because a 74-validator set gives degenerate
+# attestation-committee / PTC coverage?). To use it: set this true, raise the participants'
+# validator_count (and/or count) AND preregistered_validator_count together to the new VC total (e.g.
+# validator_count: 64 x count: 2 = 128 VCs, preregistered_validator_count: 128), and set
+# monitor.enabled: false (the monitor needs SSV validators and FATAL-crashes on a head-stall), then run.
+# SAFE ONLY on a bare run with pre_register_validators: false AND no aetheria executor - the SSV nodes
+# then adopt zero beacon validators (Step 4 skipped), so the larger VC set never overlaps the SSV seed.
+# Do NOT combine with pre_register_validators: true or any aetheria validator-registering suite
+# ((event)/(ptc)/(proposer)/(p2p)): those make SSV operators run indices 64-73, and the extra VCs would
+# overlap them -> double-sign -> slashing.
+unsafe_skip_validator_layout_guard: false
+
 monitor:
   enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
 

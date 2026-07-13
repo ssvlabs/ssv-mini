@@ -8,6 +8,9 @@ WORK_DIR=$(mktemp -d)
 
 # Configuration — must match params.yaml and ethereum-package defaults
 MNEMONIC="giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"
+# These define the SSV seed layout (indices 64-73). utils/constants.star mirrors them
+# (SSV_SEED_START_INDEX / SSV_MANAGED_VALIDATOR_COUNT) for main.star's runtime validator-layout guard;
+# keep the two in sync when regenerating.
 CL_VALIDATOR_START=64    # First 64 validators belong to CL nodes (32 * 2 nodes)
 SSV_VALIDATOR_COUNT=10   # 74 total - 64 CL = 10 SSV validators
 NUM_OPERATORS=4

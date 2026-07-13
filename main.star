@@ -40,13 +40,28 @@ def run(plan, args):
     # [0, total validator_count*count over all participants); genesis deposits [0, preregistered_validator_count).
     # If VC coverage reaches 64 the SSV operators would run VC-active validators -> double-sign -> slashing.
     # Sum over ALL participant groups (not just [0]): validators are assigned sequentially, so adding a
-    # second group (e.g. EL/CL diversity) would extend coverage and could silently reach index 64. Fail on drift.
+    # second group (e.g. EL/CL diversity) would extend coverage and could silently reach index 64. Fail on
+    # drift by default; unsafe_skip_validator_layout_guard opts out for a standalone liveness probe (below).
     vc_validators = 0
     for p in network_args["participants"]:
         vc_validators += p["validator_count"] * p["count"]
     deposited_validators = network_args["network_params"]["preregistered_validator_count"]
-    if vc_validators > 64 or deposited_validators < 74:
-        fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep total validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed.".format(vc_validators, deposited_validators))
+    # Universal invariant (both paths): genesis must deposit at least as many validators as the VCs run,
+    # else a validator client would run undeposited keys.
+    if deposited_validators < vc_validators:
+        fail("preregistered_validator_count ({}) must be >= total VC validators ({}) - otherwise validator clients run undeposited keys.".format(deposited_validators, vc_validators))
+    # unsafe_skip_validator_layout_guard opts out of the strict 64/74 guard for a STANDALONE base-chain
+    # liveness probe (ssvlabs/ssv-mini#38): a bare `kurtosis run` with pre_register_validators: false and
+    # NO aetheria executor leaves the SSV nodes adopting zero beacon validators (Step 4 skipped; keyshares
+    # never reach the nodes), so raising validator_count past 64 to test post-Gloas committee/PTC liveness
+    # is safe. The caller MUST uphold that precondition - do NOT set it on an enclave any actor registers
+    # validators against (pre_register OR an aetheria (event)/(ptc)/(proposer)/(p2p) suite), else the extra
+    # VCs overlap the seed at 64-73 and double-sign -> slashing.
+    if args.get("unsafe_skip_validator_layout_guard", False):
+        plan.print("WARNING: unsafe_skip_validator_layout_guard=true - skipping the 64/74 validator-layout guard (VCs run [0,{}), genesis deposits [0,{})). SAFE ONLY if no SSV-managed validators are adopted on this enclave (no pre_register, no aetheria validator suite); otherwise VC/SSV overlap -> double-sign -> slashing.".format(vc_validators, deposited_validators))
+    else:
+        if vc_validators > constants.SSV_SEED_START_INDEX or deposited_validators < constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:
+            fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep total validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed. For a standalone base-chain liveness probe with no SSV validators (ssvlabs/ssv-mini#38), set unsafe_skip_validator_layout_guard: true.".format(vc_validators, deposited_validators))
     ethereum_network = ethereum_package.run(plan, network_args)
 
     cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
