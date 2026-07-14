@@ -22,10 +22,13 @@
 # The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
 # predates Gloas).
 #
-# Heads-up — the geth tag below (glamsterdam-devnet-6) is a MOVING target that ethpandaops re-pushes as
-# the devnet advances; it's left unpinned on purpose to track devnet-6. If a future run breaks genesis or
-# the transition, a re-pushed image is a prime suspect — refresh the tag, or pin a @sha256: digest once
-# devnet-6 stabilizes. (The CL is digest-pinned; dora + the genesis generator are pinned to fixed builds below.)
+# Heads-up — geth below is now digest-PINNED. It used to track the moving glamsterdam-devnet-6 tag, but
+# that tag drifted into a build that stalled the chain ~1.4 epochs past the Gloas fork; it's pinned to a
+# build validated to sustain liveness ~30 epochs past the fork (ssvlabs/ssv-mini#38). Every image here is
+# now pinned to a fixed build (geth + CL by digest, dora + generator by fixed tag), so the net is
+# reproducible. To advance with devnet-6: `docker pull ethpandaops/geth:glamsterdam-devnet-6`, read its
+# digest (`docker inspect --format '{{index .RepoDigests 0}}' ethpandaops/geth:glamsterdam-devnet-6`),
+# validate a run, then bump el_image below.
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
@@ -50,7 +53,10 @@
 network:
   participants:
   - el_type: geth
-    el_image: ethpandaops/geth:glamsterdam-devnet-6
+    # Digest-pinned geth glamsterdam-devnet-6-fffa557 (see header): the moving glamsterdam-devnet-6 tag
+    # drifted into a stall-inducing build (ssvlabs/ssv-mini#38); this digest is validated to sustain
+    # liveness past the Gloas fork.
+    el_image: ethpandaops/geth@sha256:71252298807365697f246185b02223cdd5349fa15636f254bad041d12b4b3362
     cl_type: lodestar
     # Digest-pinned Lodestar v1.43.0 (v1.43.0/e9cbf75) — the CL that implements §6 produce+publish
     # (lighthouse v8.2.0 lacks the produce endpoint); pinned at the digest the ssv#2923 validation ran on.

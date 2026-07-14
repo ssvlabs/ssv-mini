@@ -100,7 +100,7 @@ use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
 - `params-boole.yaml` — Electra→Boole→Fulu fork transitions
-- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (monitor/E2M enabled)
+- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled)
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml
