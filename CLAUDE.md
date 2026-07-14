@@ -53,6 +53,7 @@ Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
 - `pre_register_validators`: Bulk-register the full static keyshare set on-chain at bring-up under the deployer's owner (default: false; needed for per-validator fork-transition coverage, aetheria#141 A2). Incompatible with the executor's validator-registering suites (`(event)`/`(ptc)`/`(proposer)`/`(p2p)`) on the same enclave — the shares' owner-nonce sequence forbids carving a subset out
+- `unsafe_skip_validator_layout_guard`: Bypass main.star's 64/74 validator-layout guard so a **standalone** base-chain liveness probe can run >64 baseline validators (Gloas devnet stall investigation, ssvlabs/ssv-mini#38). Default false. Safe **only** when no SSV-managed validators are adopted on the enclave (bare run: `pre_register_validators: false` + no executor); combining with `pre_register_validators: true` is rejected in code, and it must not be set against an executor validator suite either, or the extra VCs overlap the seed at 64–73 → double-sign → slashing. See `params-gloas.yaml` for the full contract
 - `boole_epoch`: Boole fork activation epoch
 - `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
 - `monitor.enabled`: Enable monitoring stack

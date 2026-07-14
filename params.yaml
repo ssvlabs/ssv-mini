@@ -31,7 +31,9 @@ network:
     # validators the SSV operators adopt (ssvlabs/aetheria orchestrator/script/insert_test_data.sql).
     # VCs run [0, total validator_count*count summed over all participant groups) = [0,64); genesis
     # deposits [0, preregistered) = [0,74). Keep that total <= 64 and preregistered_validator_count
-    # >= 74 (main.star asserts this), else operators would run VC-active validators -> double-sign -> slashing.
+    # >= 74 (main.star asserts this by default; unsafe_skip_validator_layout_guard in params-gloas.yaml
+    # opts out for standalone liveness probes), else operators would run VC-active validators ->
+    # double-sign -> slashing.
     preregistered_validator_count: 74
 
   port_publisher:
