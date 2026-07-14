@@ -54,10 +54,20 @@ def run(plan, args):
     # liveness probe (ssvlabs/ssv-mini#38): a bare `kurtosis run` with pre_register_validators: false and
     # NO aetheria executor leaves the SSV nodes adopting zero beacon validators (Step 4 skipped; keyshares
     # never reach the nodes), so raising validator_count past 64 to test post-Gloas committee/PTC liveness
-    # is safe. The caller MUST uphold that precondition - do NOT set it on an enclave any actor registers
-    # validators against (pre_register OR an aetheria (event)/(ptc)/(proposer)/(p2p) suite), else the extra
-    # VCs overlap the seed at 64-73 and double-sign -> slashing.
+    # is safe. Combining it with pre_register_validators: true is rejected below (that half of the contract
+    # is detectable in-repo). The aetheria-executor half can't be detected here, so the caller MUST NOT set
+    # the flag on an enclave an executor's (event)/(ptc)/(proposer)/(p2p) suite registers validators
+    # against, else the extra VCs overlap the seed at 64-73 and double-sign -> slashing.
     if args.get("unsafe_skip_validator_layout_guard", False):
+        # Enforce the detectable half of the flag's contract: pre_register_validators adopts the seed at
+        # 64-73, contradicting skip's "no SSV validators" premise, and a >64 VC set would overlap it ->
+        # double-sign. (The external-executor half can't be detected in-repo - still caller's responsibility.)
+        if args.get("pre_register_validators", False):
+            fail("unsafe_skip_validator_layout_guard is incompatible with pre_register_validators: true - pre-registration makes the SSV operators run the seed at indices 64-73, so a >64 VC set would overlap them -> double-sign -> slashing. The skip flag is for bare liveness probes with no SSV validators; drop one of the two.")
+        # The monitor FATAL-crashes after ~2min of head-stall - exactly the condition a liveness probe
+        # observes - so warn (not fail: monitor-on does not affect the beacon-API head-slot evidence).
+        if args["monitor"]["enabled"]:
+            plan.print("WARNING: unsafe_skip_validator_layout_guard=true with monitor.enabled=true - the monitor FATAL-crashes after ~2min of head-stall, i.e. exactly the condition a liveness probe (ssvlabs/ssv-mini#38) is trying to observe. Set monitor.enabled: false for probe runs.")
         plan.print("WARNING: unsafe_skip_validator_layout_guard=true - skipping the 64/74 validator-layout guard (VCs run [0,{}), genesis deposits [0,{})). SAFE ONLY if no SSV-managed validators are adopted on this enclave (no pre_register, no aetheria validator suite); otherwise VC/SSV overlap -> double-sign -> slashing.".format(vc_validators, deposited_validators))
     else:
         if vc_validators > constants.SSV_SEED_START_INDEX or deposited_validators < constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:

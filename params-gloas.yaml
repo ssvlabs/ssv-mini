@@ -101,9 +101,9 @@ pre_register_validators: false
 # monitor.enabled: false (the monitor needs SSV validators and FATAL-crashes on a head-stall), then run.
 # SAFE ONLY on a bare run with pre_register_validators: false AND no aetheria executor - the SSV nodes
 # then adopt zero beacon validators (Step 4 skipped), so the larger VC set never overlaps the SSV seed.
-# Do NOT combine with pre_register_validators: true or any aetheria validator-registering suite
-# ((event)/(ptc)/(proposer)/(p2p)): those make SSV operators run indices 64-73, and the extra VCs would
-# overlap them -> double-sign -> slashing.
+# Combining with pre_register_validators: true is rejected by main.star (that half is detectable in-repo).
+# The aetheria half can't be, so do NOT set this against an executor validator-registering suite
+# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap indices 64-73 -> double-sign -> slashing.
 unsafe_skip_validator_layout_guard: false
 
 monitor:
