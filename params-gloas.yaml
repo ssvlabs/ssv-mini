@@ -53,8 +53,9 @@
 network:
   participants:
   - el_type: geth
-    # Digest-pinned (see header): the moving glamsterdam-devnet-6 tag drifted into a stall-inducing build
-    # (ssvlabs/ssv-mini#38); this digest is validated to sustain liveness past the Gloas fork.
+    # Digest-pinned geth glamsterdam-devnet-6-fffa557 (see header): the moving glamsterdam-devnet-6 tag
+    # drifted into a stall-inducing build (ssvlabs/ssv-mini#38); this digest is validated to sustain
+    # liveness past the Gloas fork.
     el_image: ethpandaops/geth@sha256:71252298807365697f246185b02223cdd5349fa15636f254bad041d12b4b3362
     cl_type: lodestar
     # Digest-pinned Lodestar v1.43.0 (v1.43.0/e9cbf75) — the CL that implements §6 produce+publish
