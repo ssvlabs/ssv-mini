@@ -58,9 +58,12 @@ network:
     # liveness past the Gloas fork.
     el_image: ethpandaops/geth@sha256:71252298807365697f246185b02223cdd5349fa15636f254bad041d12b4b3362
     cl_type: lodestar
-    # Digest-pinned Lodestar v1.43.0 (v1.43.0/e9cbf75) — the CL that implements §6 produce+publish
-    # (lighthouse v8.2.0 lacks the produce endpoint); pinned at the digest the ssv#2923 validation ran on.
-    cl_image: ethpandaops/lodestar@sha256:8126f8de5262379d7a0438912dfe958fa7fa3cab7197efeae6636e012f82da66
+    # Digest-pinned Lodestar unstable-2e78647 (~2026-07-10) — implements §6 produce+publish (lighthouse
+    # v8.2.0 lacks the produce endpoint) AND the §5 proposer-preferences submit route
+    # POST /eth/v1/validator/proposer_preferences (lodestar #9570). The prior snapshot (mislabeled
+    # "v1.43.0" — it was a devnet-6 branch build) predated #9570 and 404'd that route, hard-failing
+    # (proposer) §5 on every proposal (ssvlabs/ssv-mini §5 finding); bumped past #9570 to clear it.
+    cl_image: ethpandaops/lodestar@sha256:c2615b9e9eb0635518332ba9f89166c356dbd5081a917f09b2d28c65627950a9
     validator_count: 32
     count: 2
     supernode: true
