@@ -54,7 +54,7 @@ make help
 | Command | Description |
 |---------|-------------|
 | `make run` | Start testnet (default: Fulu at genesis) |
-| `make run-boole` | Start with Boole fork at epoch 3, Fulu at epoch 5 |
+| `make run-boole` | Start with Boole fork at epoch 3 |
 | `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 (devnet-6 images) |
 | `make reset` | Clean + restart from genesis |
 | `make show` | Show running services and ports |
