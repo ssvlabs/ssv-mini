@@ -1,4 +1,4 @@
-# Boole fork test: starts at Electra, forks into Boole at epoch 3, Fulu at epoch 5
+# Boole fork test: starts at Electra, forks into Boole at epoch 3
 # Usage: make run PARAMS_FILE=params-boole.yaml
 
 network:
