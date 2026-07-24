@@ -62,6 +62,8 @@ make help
 | `make clean` | Remove all enclaves |
 | `make restart-ssv-nodes` | Restart SSV nodes (after rebuilding image) |
 | `make prepare` | Clone SSV repo + build Docker image |
+| `make prepare-anchor` | Clone Anchor repo + build Docker image; useful when using custom branch |
+| `make prepare-monitor` | Clone E2M repo + build Docker image |
 | `make prepare-all` | Build SSV + Anchor + Monitor images |
 | `make generate-keys` | Regenerate static operator keys + keyshares |
 
@@ -87,6 +89,10 @@ nodes:
     count: 4      # Valid: 4, 7, 10, 13 (3f+1 for BFT)
   anchor:
     count: 0      # Anchor consensus client nodes
+
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v1.2.0"  # needs to be changed to node/anchor when using local built anchor image
 
 network:
   network_params:

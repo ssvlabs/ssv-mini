@@ -48,7 +48,7 @@ nodes:
 
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.2.0"  # needs to be changed to node/anchor when using local built anchor image
+  anchor: "sigp/anchor:v1.2.0"
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
