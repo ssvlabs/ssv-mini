@@ -1,4 +1,4 @@
-# Boole fork test: starts at Electra, forks into Boole at epoch 3
+# Boole fork test: genesis on Fulu, forks into Boole at epoch 3
 # Usage: make run PARAMS_FILE=params-boole.yaml
 
 network:
@@ -29,7 +29,7 @@ network:
 use_static_keys: true
 
 # pre_register_validators for the boole net. See params.yaml for the flag's full semantics and its
-# incompatibility with the executor's validator-registering suites. Enabled here, the deployer
+# incompatibility with the executor's validator-registering suites. When enabled here, the deployer
 # bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
 # from genesis.
 pre_register_validators: false
