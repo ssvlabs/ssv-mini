@@ -2,6 +2,7 @@ ENCLAVE_NAME?=localnet
 PARAMS_FILE?=params.yaml
 SSV_NODE_COUNT?=4
 SSV_COMMIT?=stage
+ANCHOR_COMMIT?=unstable
 # Minimum free disk (GiB) in the Docker VM before a run. Geth self-terminates below its
 # ~1.62GiB low-disk safety threshold, which freezes the chain mid-run (EL gone → CL gets no
 # payloads). Guarded with headroom by check-deps; override for tiny/large runs.
@@ -114,13 +115,17 @@ prepare-ssv:
 	@echo "Building SSV image..."
 	@cd ../ssv && docker build -t node/ssv .
 
+# prepare-anchor builds node/anchor at the FRESHEST commit for ANCHOR_COMMIT
+# (branch, tag, or commit). Same detach-at-origin pattern as prepare-ssv.
 .PHONY: prepare-anchor
 prepare-anchor:
 	@if [ ! -d "../anchor" ]; then \
-		echo "Cloning Anchor repo..." && \
+		echo "Cloning Anchor repo ($(ANCHOR_COMMIT))..." && \
 		git clone https://github.com/sigp/anchor.git ../anchor; \
 	fi
-	@cd ../anchor && git fetch origin && git checkout origin/unstable
+	@echo "Checking out Anchor $(ANCHOR_COMMIT) at its freshest commit..."
+	@cd ../anchor && git fetch origin --tags --force && \
+		( git checkout --detach "origin/$(ANCHOR_COMMIT)" 2>/dev/null || git checkout --detach "$(ANCHOR_COMMIT)" )
 	@echo "Building Anchor image..."
 	@cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
 
@@ -215,17 +220,19 @@ help:
 	@echo ""
 	@echo "Image building:"
 	@echo "  make prepare         Build SSV image (default: stage branch)"
-	@echo "  make prepare-anchor  Build Anchor image"
+	@echo "  make prepare-anchor  Build Anchor image (default: unstable)"
+	@echo "  make prepare-monitor Build Monitor image"
 	@echo "  make prepare-all     Build all images"
 	@echo ""
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu at genesis"
-	@echo "  make run-boole                       Boole fork at epoch 3, Fulu at epoch 5"
+	@echo "  make run-boole                       Boole fork at epoch 3"
 	@echo "  make run-gloas                       Gloas/ePBS fork at epoch 2 (devnet-6 images)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
-	@echo "  SSV_COMMIT=main make prepare   Use a specific SSV branch"
+	@echo "  SSV_COMMIT=main make prepare             Use a specific SSV branch"
+	@echo "  ANCHOR_COMMIT=main make prepare-anchor   Use a specific Anchor ref"
 	@echo ""
 	@echo "Static keys:"
 	@echo "  make generate-keys   Regenerate static operator keys + keyshares"

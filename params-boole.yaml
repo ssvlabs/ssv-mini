@@ -1,4 +1,4 @@
-# Boole fork test: starts at Electra, forks into Boole at epoch 3, Fulu at epoch 5
+# Boole fork test: genesis on Fulu, forks into Boole at epoch 3
 # Usage: make run PARAMS_FILE=params-boole.yaml
 
 network:
@@ -18,7 +18,7 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
-    fulu_fork_epoch: 5
+    fulu_fork_epoch: 0
     perfect_peerdas_enabled: false
     preregistered_validator_count: 74
 
@@ -28,6 +28,13 @@ network:
 
 use_static_keys: true
 
+# pre_register_validators for the boole net. See params.yaml for the flag's full semantics and its
+# incompatibility with the executor's validator-registering suites. When enabled here, the deployer
+# bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
+# from genesis.
+pre_register_validators: false
+
+# With monitor.enabled: true, Kurtosis expects a local Docker image tagged monitor. Make sure to have it built locally.
 monitor:
   enabled: false
 

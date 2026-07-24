@@ -32,7 +32,9 @@ def generate_config(
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
         Network="local-testnet", #if not set - default to "mainnet"
+        NetworkName="testnet",  #relevant for interop with Anchor, otherwise getting mismatched subnets starting with Boole
         DomainType="0x00000000",
+        NextDomainType="0x00000001",  #Boole specific, inert otherwise; deviates from SIPs but required for interop with Anchor
         RegistrySyncOffset="1",
         RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
         OperatorPrivateKey=operator_private_key,

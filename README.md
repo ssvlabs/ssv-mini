@@ -54,7 +54,7 @@ make help
 | Command | Description |
 |---------|-------------|
 | `make run` | Start testnet (default: Fulu at genesis) |
-| `make run-boole` | Start with Boole fork at epoch 3, Fulu at epoch 5 |
+| `make run-boole` | Start with Boole fork at epoch 3 |
 | `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 (devnet-6 images) |
 | `make reset` | Clean + restart from genesis |
 | `make show` | Show running services and ports |
@@ -62,6 +62,8 @@ make help
 | `make clean` | Remove all enclaves |
 | `make restart-ssv-nodes` | Restart SSV nodes (after rebuilding image) |
 | `make prepare` | Clone SSV repo + build Docker image |
+| `make prepare-anchor` | Clone Anchor repo + build Docker image; useful when using custom branch |
+| `make prepare-monitor` | Clone E2M repo + build Docker image |
 | `make prepare-all` | Build SSV + Anchor + Monitor images |
 | `make generate-keys` | Regenerate static operator keys + keyshares |
 
@@ -88,6 +90,10 @@ nodes:
   anchor:
     count: 0      # Anchor consensus client nodes
 
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v1.2.0"  # needs to be changed to node/anchor when using local built anchor image
+
 network:
   network_params:
     fulu_fork_epoch: 0  # 0 = active at genesis (default); set large (e.g. 100000) to defer
@@ -99,8 +105,8 @@ use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 
 Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
-- `params-boole.yaml` — Electra→Boole→Fulu fork transitions
-- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled)
+- `params-boole.yaml` — Alan→Boole fork transitions; needs `SSV_COMMIT=integration/boole-convergence make prepare`
+- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml
