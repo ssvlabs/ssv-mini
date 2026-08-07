@@ -33,27 +33,33 @@ check-deps:
 	fi
 
 # Optional params overrides, substituted into a generated copy of PARAMS_FILE (the sources stay
-# untouched). GLOAS_FORK_EPOCH retunes the ePBS fork (gloas params only); PRE_REGISTER_VALIDATORS
-# bulk-registers the static keyshares at bring-up (see main.star Step 4).
+# untouched). GLOAS_FORK_EPOCH retunes the ePBS fork (gloas params only); BOOLE_FORK_EPOCH retunes
+# the SSV Boole fork (boole params only); PRE_REGISTER_VALIDATORS bulk-registers the static
+# keyshares at bring-up (see main.star Step 4).
 GLOAS_FORK_EPOCH?=
+BOOLE_FORK_EPOCH?=
 PRE_REGISTER_VALIDATORS?=
 GENERATED_PARAMS=.params.generated.yaml
 
 .PHONY: run
 run: check-deps ensure-keys
 	@PARAMS="$(PARAMS_FILE)"; \
-	if [ -n "$(GLOAS_FORK_EPOCH)" ] || [ -n "$(PRE_REGISTER_VALIDATORS)" ]; then \
+	if [ -n "$(GLOAS_FORK_EPOCH)" ] || [ -n "$(BOOLE_FORK_EPOCH)" ] || [ -n "$(PRE_REGISTER_VALIDATORS)" ]; then \
 		cp "$(PARAMS_FILE)" "$(GENERATED_PARAMS)"; \
 		if [ -n "$(GLOAS_FORK_EPOCH)" ]; then \
 			grep -q '^[[:space:]]*gloas_fork_epoch:' "$(GENERATED_PARAMS)" || { echo "Error: GLOAS_FORK_EPOCH set but $(PARAMS_FILE) has no gloas_fork_epoch key"; exit 1; }; \
 			sed -E 's|^([[:space:]]*gloas_fork_epoch:)[[:space:]]*[0-9]+.*|\1 $(GLOAS_FORK_EPOCH)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
+		fi; \
+		if [ -n "$(BOOLE_FORK_EPOCH)" ]; then \
+			grep -q '^[[:space:]]*boole_epoch:' "$(GENERATED_PARAMS)" || { echo "Error: BOOLE_FORK_EPOCH set but $(PARAMS_FILE) has no boole_epoch key"; exit 1; }; \
+			sed -E 's|^([[:space:]]*boole_epoch:)[[:space:]]*[0-9]+.*|\1 $(BOOLE_FORK_EPOCH)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
 		fi; \
 		if [ -n "$(PRE_REGISTER_VALIDATORS)" ]; then \
 			grep -q '^pre_register_validators:' "$(GENERATED_PARAMS)" || { echo "Error: PRE_REGISTER_VALIDATORS set but $(PARAMS_FILE) has no pre_register_validators key"; exit 1; }; \
 			sed -E 's|^(pre_register_validators:).*|\1 $(PRE_REGISTER_VALIDATORS)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
 		fi; \
 		PARAMS="$(GENERATED_PARAMS)"; \
-		echo "──── Params overrides applied ($$PARAMS): GLOAS_FORK_EPOCH=$(GLOAS_FORK_EPOCH) PRE_REGISTER_VALIDATORS=$(PRE_REGISTER_VALIDATORS) ────"; \
+		echo "──── Params overrides applied ($$PARAMS): GLOAS_FORK_EPOCH=$(GLOAS_FORK_EPOCH) BOOLE_FORK_EPOCH=$(BOOLE_FORK_EPOCH) PRE_REGISTER_VALIDATORS=$(PRE_REGISTER_VALIDATORS) ────"; \
 	fi; \
 	echo "──── Starting SSV testnet ────"; \
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file "$$PARAMS" .
