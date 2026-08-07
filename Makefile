@@ -232,8 +232,8 @@ help:
 	@echo ""
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu at genesis"
-	@echo "  make run-boole                       Boole fork at epoch 3"
-	@echo "  make run-gloas                       Gloas/ePBS fork at epoch 2 (devnet-6 images)"
+	@echo "  make run-boole                       Boole fork, epoch 3 (BOOLE_FORK_EPOCH=N to retune)"
+	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune; devnet-6 images)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
@@ -250,12 +250,12 @@ help:
 
 .PHONY: run-boole
 run-boole:
-	@echo "──── Starting SSV testnet (Boole fork at epoch 3) ────"
+	@echo "──── Starting SSV testnet (Boole fork) ────"
 	@$(MAKE) --no-print-directory run PARAMS_FILE=params-boole.yaml
 
 .PHONY: run-gloas
 run-gloas:
-	@echo "──── Starting SSV testnet (Gloas/ePBS fork at epoch 2) ────"
+	@echo "──── Starting SSV testnet (Gloas/ePBS fork) ────"
 	@$(MAKE) --no-print-directory run PARAMS_FILE=params-gloas.yaml
 
 # ── Tests ────────────────────────────────────────────────────────────
