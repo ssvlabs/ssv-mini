@@ -18,6 +18,9 @@ network:
     network_id: "3151908"
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
+    # Fulu stays at genesis so it always precedes the SSV Boole fork (the chain is born on Fulu, with
+    # no mid-run transition) and never falls inside the Boole measurement window. The BOOLE_FORK_EPOCH
+    # knob retunes only boole_epoch (below), so this ordering holds for any boole_epoch >= 1.
     fulu_fork_epoch: 0
     perfect_peerdas_enabled: false
     preregistered_validator_count: 74
@@ -34,10 +37,15 @@ use_static_keys: true
 # from genesis.
 pre_register_validators: false
 
-# With monitor.enabled: true, Kurtosis expects a local Docker image tagged monitor. Make sure to have it built locally.
+# ENABLED for the aetheria (boole) suite: it reads chain timing (genesis, seconds-per-slot,
+# slots-per-epoch) from the monitor's /api/environment (dora doesn't serve it) to anchor its
+# fork-relative windows. Needs a local image tagged `monitor` — build it via `make prepare-monitor`.
 monitor:
-  enabled: false
+  enabled: true
 
+# SSV Boole fork epoch (Alan → Boole). Retune without editing this file via
+# `make run-boole BOOLE_FORK_EPOCH=N`; the aetheria (boole) suite passes 8 for a comfortable
+# pre-fork Alan window (its dormancy + aggregator-format-switch steps need one).
 boole_epoch: 3
 
 nodes:

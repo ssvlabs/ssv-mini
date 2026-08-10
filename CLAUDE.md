@@ -61,6 +61,7 @@ Network configuration is controlled via `params.yaml`:
 
 Make-level overrides (substituted into a generated copy of `PARAMS_FILE`, sources untouched):
 - `GLOAS_FORK_EPOCH=N`: retune the ePBS fork epoch (gloas params only)
+- `BOOLE_FORK_EPOCH=N`: retune the SSV Boole fork epoch (boole params only)
 - `PRE_REGISTER_VALIDATORS=true|false`: toggle the flag above without editing the file
 
 ```bash
