@@ -1,6 +1,9 @@
 constants = import_module("../../utils/constants.star")
 utils = import_module("../../utils/utils.star")
 
+ANCHOR_METRICS_PORT_NAME = "metrics"
+ANCHOR_METRICS_PORT = 5164
+
 # Start anchor nodes: first node starts alone (to get ENR), remaining start in parallel
 def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
     IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
@@ -15,7 +18,18 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
         "--logfile-max-number", "0", "--debug-level", "debug",
         # mitigation of https://github.com/sigp/anchor/issues/765
         "--subscribe-all-subnets",
+        # Prometheus metrics; anchor defaults the listen address to 127.0.0.1, which is unreachable
+        # from outside the container, so bind 0.0.0.0 for the published port to work.
+        "--metrics", "--metrics-address", "0.0.0.0", "--metrics-port", str(ANCHOR_METRICS_PORT),
     ]
+
+    metrics_ports = {
+        ANCHOR_METRICS_PORT_NAME: PortSpec(
+            number=ANCHOR_METRICS_PORT,
+            transport_protocol="TCP",
+            application_protocol="http",
+        ),
+    }
 
     plan.add_service(
         name="anchor-node-0",
@@ -25,6 +39,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
             entrypoint=["anchor"],
             cmd=command_arr,
             files=files,
+            ports=metrics_ports,
             private_ip_address_placeholder=IP_PLACEHOLDER,
             ready_conditions=ReadyCondition(
                 recipe=ExecRecipe(
@@ -54,6 +69,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
                 entrypoint=["anchor"],
                 cmd=command_arr_with_boot,
                 files=files,
+                ports=metrics_ports,
                 private_ip_address_placeholder=IP_PLACEHOLDER,
             )
         plan.add_services(remaining_configs, description="Starting {} remaining Anchor nodes in parallel".format(num_nodes - 1))
