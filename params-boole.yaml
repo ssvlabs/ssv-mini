@@ -54,9 +54,10 @@ nodes:
   anchor:
     count: 0
   # Archive-exporter node the aetheria (boole) Step 12 reads to verify AGGREGATOR_COMMITTEE consensus.
-  # Boole-only (Step 12 is boole-specific); see main.star / node.star for how it's run.
+  # Boole-only (Step 12 is boole-specific); see main.star / node.star for how it's run. Singular by
+  # design — the aetheria side pins the hostname `ssv-exporter` — so this is a boolean, not a count.
   exporter:
-    count: 1
+    enabled: true
 
 images:
   ssv: "node/ssv"

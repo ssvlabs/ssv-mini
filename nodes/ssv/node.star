@@ -41,7 +41,10 @@ def generate_config(
         DiscoveryProtocolID = "0x737376647635", # ssvdv5
         Discovery=discovery,
         ENR=enr,
-        Exporter=is_exporter,
+        ExporterEnabled=is_exporter,
+        # archive (not standard) also registers /v1/exporter/traces/* — the committee duty traces the
+        # aetheria (boole) Step 12 reads; standard mode wouldn't. Inert for operator nodes (ExporterEnabled=False).
+        ExporterMode="archive" if is_exporter else "standard",
         SSVAPIPort=SSV_API_PORT,
         MetricsAPIPort=SSV_METRICS_PORT,
         EnableTraces=True,
@@ -64,21 +67,9 @@ def generate_config(
 
 SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
 
-def get_service_config(index, config_artifact, is_exporter, image):
+def get_service_config(index, config_artifact, image):
     """Returns a ServiceConfig for an SSV node without starting it (for use with plan.add_services)."""
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
-
-    env_vars = {
-        "CONFIG_PATH": config_path,
-        "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
-        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
-    }
-    if is_exporter:
-        # `archive`, not `standard`: only archive mode registers /v1/exporter/traces/* — the committee
-        # duty traces the aetheria (boole) Step 12 reads. The exporter auto-subscribes to all subnets,
-        # so it observes every committee's consensus.
-        env_vars["EXPORTER"] = "true"
-        env_vars["EXPORTER_MODE"] = "archive"
 
     return ServiceConfig(
         image=image,
@@ -99,14 +90,12 @@ def get_service_config(index, config_artifact, is_exporter, image):
                 application_protocol="http",
             ),
         },
-        env_vars=env_vars,
+        env_vars={
+            "CONFIG_PATH": config_path,
+            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
+        },
         files={
             SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },
     )
-
-def start(plan, index, config_artifact, is_exporter, image):
-    """Starts a single SSV node. Use get_service_config + plan.add_services for parallel startup."""
-    service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
-    service_config = get_service_config(index, config_artifact, is_exporter, image)
-    return plan.add_service(service_name, service_config)
