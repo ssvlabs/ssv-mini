@@ -68,6 +68,18 @@ def get_service_config(index, config_artifact, is_exporter, image):
     """Returns a ServiceConfig for an SSV node without starting it (for use with plan.add_services)."""
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
+    env_vars = {
+        "CONFIG_PATH": config_path,
+        "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
+    }
+    if is_exporter:
+        # `archive`, not `standard`: only archive mode registers /v1/exporter/traces/* — the committee
+        # duty traces the aetheria (boole) Step 12 reads. The exporter auto-subscribes to all subnets,
+        # so it observes every committee's consensus.
+        env_vars["EXPORTER"] = "true"
+        env_vars["EXPORTER_MODE"] = "archive"
+
     return ServiceConfig(
         image=image,
         entrypoint=[
@@ -87,11 +99,7 @@ def get_service_config(index, config_artifact, is_exporter, image):
                 application_protocol="http",
             ),
         },
-        env_vars={
-            "CONFIG_PATH": config_path,
-            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
-            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
-        },
+        env_vars=env_vars,
         files={
             SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },

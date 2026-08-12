@@ -195,9 +195,17 @@ def run(plan, args):
             ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, is_exporter, ssv_image)
             node_index += 1
 
+        # Optional archive-exporter node (enabled in params-boole). Read-only: an empty operator key —
+        # it doesn't sign, and its p2p identity auto-generates like every node's. node.star runs it in
+        # archive mode, which is what serves the committee duty traces the aetheria (boole) Step 12 reads.
+        exporter_count = args["nodes"].get("exporter", {}).get("count", 0)
+        if exporter_count > 0:
+            exporter_config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, "", enr, True, args)
+            ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, True, ssv_image)
+
         ssv_services = plan.add_services(
             ssv_configs,
-            description="Starting {} SSV nodes in parallel".format(ssv_node_count),
+            description="Starting SSV nodes in parallel",
         )
 
         first_ssv_name = "ssv-node-{}".format(node_index - ssv_node_count)
