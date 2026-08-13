@@ -192,14 +192,25 @@ def run(plan, args):
             is_exporter = False
             config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr, is_exporter, args)
             service_name = "ssv-node-{}".format(node_index)
-            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, is_exporter, ssv_image)
+            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image)
             node_index += 1
+
+        # Optional archive-exporter node (enabled in params-boole). Read-only: an empty operator key —
+        # it doesn't sign, and its p2p identity auto-generates like every node's. generate_config renders
+        # it in archive mode, which serves the committee duty traces the aetheria (boole) Step 12 reads.
+        # Singular by design (the aetheria side pins the hostname `ssv-exporter`), hence a bool, not a count.
+        exporter_enabled = args["nodes"].get("exporter", {}).get("enabled", False)
+        if exporter_enabled:
+            exporter_config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, "", enr, True, args)
+            ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, ssv_image)
 
         ssv_services = plan.add_services(
             ssv_configs,
-            description="Starting {} SSV nodes in parallel".format(ssv_node_count),
+            description="Starting {} SSV services in parallel".format(len(ssv_configs)),
         )
 
+        # The exporter above reused node_index without incrementing it, so node_index is still
+        # anchor_node_count + ssv_node_count here — this resolves to the first SSV node.
         first_ssv_name = "ssv-node-{}".format(node_index - ssv_node_count)
         ssv_node_api_url = ssv_services[first_ssv_name].ports[ssv_node.SSV_API_PORT_NAME].url
 

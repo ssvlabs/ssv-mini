@@ -23,8 +23,10 @@ ssv:
     Forks:
       GasLimit36: 0
       Boole: {{ .BooleEpoch }}
+exporter:
+  Enabled: {{ .ExporterEnabled }}
+  Mode: "{{ .ExporterMode }}"
 OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
-Exporter: "{{ .Exporter }}"
 EnableTraces: {{ .EnableTraces }}
 MetricsAPIPort: {{ .MetricsAPIPort }}

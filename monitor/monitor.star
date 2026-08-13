@@ -2,11 +2,11 @@ constants = import_module("../utils/constants.star")
 postgres = import_module("postgres.star")
 redis = import_module("redis.star")
 
-def start(plan, ssv_exporter_url, cl_url, monitor_image, postgres_image, redis_image):
+def start(plan, ssv_node_api_url, cl_url, monitor_image, postgres_image, redis_image):
     postgres_service_name, postgres_port = postgres.start(plan, postgres_image)
     redis_service_name, redis_port = redis.start(plan, redis_image)
 
-    env_vars = shared_envs(postgres_service_name, postgres_port, redis_service_name, redis_port, ssv_exporter_url, cl_url)
+    env_vars = shared_envs(postgres_service_name, postgres_port, redis_service_name, redis_port, ssv_node_api_url, cl_url)
 
     plan.add_service(
         name="monitor-daemon",
@@ -46,13 +46,13 @@ def shared_envs(
     postgres_port, 
     redis_service_name, 
     redis_port, 
-    ssv_exporter_url,
+    ssv_node_api_url,
     cl_url):
     return {
         "NETWORK": "other",
         "BEACON_ADDR": cl_url,
         "DEFAULT_POOL": "ssv",
-        "POOLS": '[{{"id":1,"name":"ssv","indices":[],"endpoint":"{}/v1/validators"}}]'.format(ssv_exporter_url),
+        "POOLS": '[{{"id":1,"name":"ssv","indices":[],"endpoint":"{}/v1/validators"}}]'.format(ssv_node_api_url),
         "POSTGRES_URL": "postgres://postgres:postgres@{}:{}/monitor?sslmode=disable".format(postgres_service_name, postgres_port),
         "REDIS_URL": "redis://{}:{}".format(redis_service_name, redis_port),
         "LOG_LEVEL": "debug",
