@@ -35,16 +35,22 @@ check-deps:
 # Optional params overrides, substituted into a generated copy of PARAMS_FILE (the sources stay
 # untouched). GLOAS_FORK_EPOCH retunes the ePBS fork (gloas params only); BOOLE_FORK_EPOCH retunes
 # the SSV Boole fork (boole params only); PRE_REGISTER_VALIDATORS bulk-registers the static
-# keyshares at bring-up (see main.star Step 4).
+# keyshares at bring-up (see main.star Step 4). SSV_COUNT / ANCHOR_COUNT override nodes.ssv.count /
+# nodes.anchor.count to run a mixed SSV+Anchor committee (e.g. SSV_COUNT=2 ANCHOR_COUNT=2 for the
+# aetheria (boole) cross-client interop run); their sum must be a valid cluster size (4/7/10/13).
+# (SSV_COUNT sets the bring-up node count; the separate SSV_NODE_COUNT above only drives the
+# restart-ssv-nodes helper.)
 GLOAS_FORK_EPOCH?=
 BOOLE_FORK_EPOCH?=
 PRE_REGISTER_VALIDATORS?=
+SSV_COUNT?=
+ANCHOR_COUNT?=
 GENERATED_PARAMS=.params.generated.yaml
 
 .PHONY: run
 run: check-deps ensure-keys
 	@PARAMS="$(PARAMS_FILE)"; \
-	if [ -n "$(GLOAS_FORK_EPOCH)" ] || [ -n "$(BOOLE_FORK_EPOCH)" ] || [ -n "$(PRE_REGISTER_VALIDATORS)" ]; then \
+	if [ -n "$(GLOAS_FORK_EPOCH)" ] || [ -n "$(BOOLE_FORK_EPOCH)" ] || [ -n "$(PRE_REGISTER_VALIDATORS)" ] || [ -n "$(SSV_COUNT)" ] || [ -n "$(ANCHOR_COUNT)" ]; then \
 		cp "$(PARAMS_FILE)" "$(GENERATED_PARAMS)"; \
 		if [ -n "$(GLOAS_FORK_EPOCH)" ]; then \
 			grep -q '^[[:space:]]*gloas_fork_epoch:' "$(GENERATED_PARAMS)" || { echo "Error: GLOAS_FORK_EPOCH set but $(PARAMS_FILE) has no gloas_fork_epoch key"; exit 1; }; \
@@ -58,8 +64,16 @@ run: check-deps ensure-keys
 			grep -q '^pre_register_validators:' "$(GENERATED_PARAMS)" || { echo "Error: PRE_REGISTER_VALIDATORS set but $(PARAMS_FILE) has no pre_register_validators key"; exit 1; }; \
 			sed -E 's|^(pre_register_validators:).*|\1 $(PRE_REGISTER_VALIDATORS)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
 		fi; \
+		if [ -n "$(SSV_COUNT)" ]; then \
+			grep -qE '^[[:space:]]*ssv:[[:space:]]*$$' "$(GENERATED_PARAMS)" || { echo "Error: SSV_COUNT set but $(PARAMS_FILE) has no nodes.ssv block"; exit 1; }; \
+			sed -E '/^[[:space:]]*ssv:[[:space:]]*$$/,/count:/ s|^([[:space:]]*count:)[[:space:]]*[0-9]+.*|\1 $(SSV_COUNT)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
+		fi; \
+		if [ -n "$(ANCHOR_COUNT)" ]; then \
+			grep -qE '^[[:space:]]*anchor:[[:space:]]*$$' "$(GENERATED_PARAMS)" || { echo "Error: ANCHOR_COUNT set but $(PARAMS_FILE) has no nodes.anchor block"; exit 1; }; \
+			sed -E '/^[[:space:]]*anchor:[[:space:]]*$$/,/count:/ s|^([[:space:]]*count:)[[:space:]]*[0-9]+.*|\1 $(ANCHOR_COUNT)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
+		fi; \
 		PARAMS="$(GENERATED_PARAMS)"; \
-		echo "──── Params overrides applied ($$PARAMS): GLOAS_FORK_EPOCH=$(GLOAS_FORK_EPOCH) BOOLE_FORK_EPOCH=$(BOOLE_FORK_EPOCH) PRE_REGISTER_VALIDATORS=$(PRE_REGISTER_VALIDATORS) ────"; \
+		echo "──── Params overrides applied ($$PARAMS): GLOAS_FORK_EPOCH=$(GLOAS_FORK_EPOCH) BOOLE_FORK_EPOCH=$(BOOLE_FORK_EPOCH) PRE_REGISTER_VALIDATORS=$(PRE_REGISTER_VALIDATORS) SSV_COUNT=$(SSV_COUNT) ANCHOR_COUNT=$(ANCHOR_COUNT) ────"; \
 	fi; \
 	echo "──── Starting SSV testnet ────"; \
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file "$$PARAMS" .
@@ -233,6 +247,7 @@ help:
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu at genesis"
 	@echo "  make run-boole                       Boole fork, epoch 3 (BOOLE_FORK_EPOCH=N to retune)"
+	@echo "  make run-boole-interop               Boole fork, 2 SSV + 2 Anchor committee (cross-client interop)"
 	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune; devnet-6 images)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
@@ -252,6 +267,14 @@ help:
 run-boole:
 	@echo "──── Starting SSV testnet (Boole fork) ────"
 	@$(MAKE) --no-print-directory run PARAMS_FILE=params-boole.yaml
+
+# 2 SSV + 2 Anchor mixed committee for the aetheria (boole) cross-client interop run. Add
+# BOOLE_FORK_EPOCH=N / PRE_REGISTER_VALIDATORS=true like any run-boole run to widen the pre-fork
+# window and give the per-validator steps teeth.
+.PHONY: run-boole-interop
+run-boole-interop:
+	@echo "──── Starting SSV+Anchor testnet (Boole fork, 2 SSV + 2 Anchor interop) ────"
+	@$(MAKE) --no-print-directory run PARAMS_FILE=params-boole.yaml SSV_COUNT=2 ANCHOR_COUNT=2
 
 .PHONY: run-gloas
 run-gloas:
