@@ -35,7 +35,7 @@ use_static_keys: true
 # incompatibility with the executor's validator-registering suites. When enabled here, the deployer
 # bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
 # from genesis.
-pre_register_validators: false
+pre_register_validators: true
 
 # ENABLED for the aetheria (boole) suite: it reads chain timing (genesis, seconds-per-slot,
 # slots-per-epoch) from the monitor's /api/environment (dora doesn't serve it) to anchor its
@@ -46,13 +46,13 @@ monitor:
 # SSV Boole fork epoch (Alan → Boole). Retune without editing this file via
 # `make run-boole BOOLE_FORK_EPOCH=N`; the aetheria (boole) suite passes 8 for a comfortable
 # pre-fork Alan window (its dormancy + aggregator-format-switch steps need one).
-boole_epoch: 3
+boole_epoch: 4
 
 nodes:
   ssv:
-    count: 4
+    count: 2
   anchor:
-    count: 0
+    count: 2
   # Archive-exporter node the aetheria (boole) Step 12 reads to verify AGGREGATOR_COMMITTEE consensus.
   # Boole-only (Step 12 is boole-specific); see main.star / node.star for how it's run. Singular by
   # design — the aetheria side pins the hostname `ssv-exporter` — so this is a boolean, not a count.
@@ -61,7 +61,7 @@ nodes:
 
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.3.0"
+  anchor: "node/anchor"
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"
