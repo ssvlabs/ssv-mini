@@ -98,4 +98,5 @@ def get_service_config(index, config_artifact, image):
         files={
             SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },
+        capabilities = ["NET_ADMIN"],
     )
