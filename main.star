@@ -151,10 +151,14 @@ def run(plan, args):
     # Needed by consumers that gate CI on this testnet without the executor (e.g. sigp/anchor). This
     # is the devnet pre-registration path tracked in ssvlabs/ssv-mini#29.
     #
-    # ON-mode contract: the static keyshares are the same validator pool (indices 64-73) the aetheria
-    # executor's validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) register at test time,
-    # so combining pre_register_validators: true with those suites on the same enclave reverts with
-    # ValidatorAlreadyExists. Use standard (flag-off) enclaves for those suites.
+    # ON-mode contract: the static keyshares occupy the validator pool at indices 64-73. Pre-registering
+    # the FULL set (pre_register_count unset/0) collides with the aetheria executor's own
+    # validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) — both register the same pubkeys, so
+    # a combined enclave reverts with ValidatorAlreadyExists; use standard (flag-off) enclaves there.
+    # pre_register_count: N registers only the first N keyshares (P = indices 64..64+N), leaving
+    # [64+N, 74) for the executor to register as its own cohort (D) — the index-partitioned split that
+    # lets pre-registration and a registering suite share one enclave (aetheria#176). register_validators
+    # reads pre_register_count from args.
     if args.get("pre_register_validators", False):
         plan.print("Step 4/5: Pre-registering validators on-chain (pre_register_validators=true)")
         interactions.register_validators(

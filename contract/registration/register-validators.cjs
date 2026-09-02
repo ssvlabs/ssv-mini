@@ -16,12 +16,21 @@ async function main() {
   const wallet = new ethers.Wallet(KEY, provider);
   const ssv = new ethers.Contract(NETWORK_ADDR, abi, wallet);
 
-  // Register the FULL share set, always. Each entry's sharesData embeds a signature over
-  // (owner, nonce) as a strict sequence, so skipping any entry shifts every later share's
-  // expected nonce and the nodes reject the ValidatorAdded events with "malformed event:
-  // failed to verify signature": validators land on-chain but are never adopted (see
-  // ssvlabs/ssv-mini#36).
-  const shares = JSON.parse(fs.readFileSync(KEYSHARES_FILE, "utf8")).shares;
+  // Register a CONTIGUOUS PREFIX of the share set: shares[0, count). Each entry's sharesData signs
+  // (owner, nonce) as a strict 0-based sequence, so a prefix keeps every registered share's nonce
+  // matching its position (0..count-1). SKIPPING a middle entry, by contrast, shifts every later
+  // share's expected nonce and the nodes reject the ValidatorAdded events with "malformed event:
+  // failed to verify signature" (validators land on-chain but are never adopted; ssvlabs/ssv-mini#36).
+  // PRE_REGISTER_COUNT unset ⇒ the full set (the original all-or-nothing behaviour). A smaller count
+  // leaves the remaining keystores for the aetheria executor to register as its own cohort — it
+  // regenerates fresh sharesData from the live on-chain nonce, which continues from count — the
+  // index-partitioned P⊎D split that lets pre-registration and a registering suite share one enclave.
+  const all = JSON.parse(fs.readFileSync(KEYSHARES_FILE, "utf8")).shares;
+  const count = process.env.PRE_REGISTER_COUNT ? parseInt(process.env.PRE_REGISTER_COUNT, 10) : all.length;
+  if (!Number.isInteger(count) || count < 1 || count > all.length) {
+    throw new Error("PRE_REGISTER_COUNT must be an integer in [1, " + all.length + "], got: " + process.env.PRE_REGISTER_COUNT);
+  }
+  const shares = all.slice(0, count);
   const publicKeys = shares.map((s) => s.payload.publicKey);
   const sharesData = shares.map((s) => s.payload.sharesData);
   const operatorIds = shares[0].payload.operatorIds;

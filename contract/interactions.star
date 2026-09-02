@@ -44,17 +44,25 @@ def register_operators(plan, public_keys, network_address):
 # yields operators that actually run validators. Off by default because the executor registers and
 # funds its own validators. Devnet pre-registration tracked under #29.
 def register_validators(plan, keyshare_artifact, network_address, rpc, genesis_constants, args):
+    # Pre-register only the first pre_register_count keyshares (P) when set (>0); the rest are left for
+    # the aetheria executor to register as its own cohort (D). Default 0 → PRE_REGISTER_COUNT unset →
+    # register-validators.cjs registers the full set (the original behaviour). See that script / #176.
+    env_vars = {
+        "LOCAL_RPC_URL": rpc,
+        "LOCAL_DEPLOYER_KEY": genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
+        "SSV_NETWORK_ADDRESS": network_address,
+        "KEYSHARES_FILE": "/app/keyshares/out.json",
+    }
+    pre_register_count = args.get("pre_register_count", 0)
+    if pre_register_count > 0:
+        env_vars["PRE_REGISTER_COUNT"] = str(pre_register_count)
+
     plan.add_service(
         name=constants.REGISTER_VALIDATOR_SERVICE_NAME,
         config=ServiceConfig(
             image=utils.get_deployer_image_spec(args),
             entrypoint=["tail", "-f", "/dev/null"],
-            env_vars={
-                "LOCAL_RPC_URL": rpc,
-                "LOCAL_DEPLOYER_KEY": genesis_constants.PRE_FUNDED_ACCOUNTS[1].private_key,
-                "SSV_NETWORK_ADDRESS": network_address,
-                "KEYSHARES_FILE": "/app/keyshares/out.json",
-            },
+            env_vars=env_vars,
             files={
                 "/app/registration": plan.upload_files("./registration"),
                 "/app/keyshares": keyshare_artifact,
