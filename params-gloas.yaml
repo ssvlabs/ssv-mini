@@ -31,8 +31,11 @@
 # validate a run, then bump el_image below.
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
-# node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV protocol fork
-# ePBS builds on) must be active, though — hence boole_epoch: 0 (default is disabled).
+# node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV-protocol fork) is
+# independent of Gloas and — postponed by the SSV team — stays DORMANT through Glamsterdam, so ePBS is
+# validated pre-Boole (Alan): per-validator aggregator runner, Alan gossip topics/domain. boole_epoch
+# below is a dormant far-future epoch (its inline note explains why not the math.MaxUint64 sentinel);
+# override via BOOLE_FORK_EPOCH to activate Boole (the (boole) suite on local_testnet_boole covers it).
 #
 # Monitor (E2M) was historically disabled on this net — the monitor couldn't decode GLOAS blocks
 # (go-eth2-client v0.28.1 has no Gloas types → it FATAL'd on the post-fork epochs). ethereum2-monitor#504
@@ -118,7 +121,7 @@ unsafe_skip_validator_layout_guard: false
 monitor:
   enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
 
-boole_epoch: 0   # SSV Boole fork active from genesis (ePBS builds on Boole); default is disabled
+boole_epoch: 1000000000   # dormant far-future epoch — never reached in a run, so ePBS stays pre-Boole (Alan). Not math.MaxUint64/1<<63: the node's Validate() overflows on a scheduled boole epoch > ~5.76e17, only the exact MaxUint64 sentinel counts as unscheduled, and the config pipeline float-rounds it.
 
 nodes:
   ssv:
