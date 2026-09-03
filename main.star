@@ -79,8 +79,8 @@ def run(plan, args):
     # false registers nothing while cohort P is expected. register-validators.cjs keeps its own [1, N]
     # check as defence-in-depth.
     pre_register_count = args.get("pre_register_count", 0)
-    if pre_register_count < 0 or pre_register_count > constants.SSV_MANAGED_VALIDATOR_COUNT:
-        fail("pre_register_count ({}) is out of range [0, {}] — it index-partitions the {}-keyshare pool (P = first N, cohort D = the rest); 0 registers the full set.".format(pre_register_count, constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_MANAGED_VALIDATOR_COUNT))
+    if pre_register_count < 0 or pre_register_count >= constants.SSV_MANAGED_VALIDATOR_COUNT:
+        fail("pre_register_count ({}) must be < {} (the pool size): a positive value splits the pool (P = first N, cohort D = the rest) and must leave D non-empty; the full pool would leave D empty, so use 0 to register everything with no split.".format(pre_register_count, constants.SSV_MANAGED_VALIDATOR_COUNT))
     if pre_register_count > 0 and not args.get("pre_register_validators", False):
         fail("pre_register_count ({}) > 0 requires pre_register_validators: true — otherwise Step 4 is skipped and nothing registers while cohort P is expected. Set pre_register_validators: true (or PRE_REGISTER_VALIDATORS=true), or drop the count.".format(pre_register_count))
 

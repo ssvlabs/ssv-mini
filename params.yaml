@@ -63,7 +63,8 @@ pre_register_validators: false
 # they register disjoint pubkeys under the same owner, and D's registration continues from N on BOTH
 # halves of the contract — the sharesData nonce sequence AND the live on-chain cluster snapshot
 # (validatorCount N, N*2.5 ETH, not a zero struct) — via the executor's live path (this D leg is
-# boot-validated end-to-end by aetheria#176). 0 (default) registers the FULL set. Only a CONTIGUOUS
+# boot-validated end-to-end by aetheria#176). 0 (default) registers the FULL set (no split); a positive
+# count must be < the pool size so cohort D is non-empty (the full pool would be a no-op split). Only a CONTIGUOUS
 # prefix is safe: the sharesData nonce sequence is 0-based (see contract/registration/register-validators.cjs
 # and ssvlabs/ssv-mini#36). Consumed by aetheria#176's unified fork-transition suite.
 pre_register_count: 0
