@@ -104,6 +104,13 @@ use_static_keys: true
 # (aetheria#141 A2).
 pre_register_validators: false
 
+# pre_register_count partitions the static keyshare pool when pre_register_validators is true: register
+# only the first N keyshares as cohort P, leaving the rest for the aetheria executor's committee suites
+# to register as cohort D at keystore offset N — the index-partitioned split that lets pre-registration
+# and a registering suite share one enclave (aetheria#176; the unified glamsterdam-fork suite runs here).
+# 0 (default) registers the FULL set. See params.yaml for the full semantics and the #36 prefix constraint.
+pre_register_count: 0
+
 # unsafe_skip_validator_layout_guard bypasses main.star's 64/74 validator-layout guard so a STANDALONE
 # base-chain liveness probe can run more than 64 baseline validators (ssvlabs/ssv-mini#38: does the
 # Gloas/ePBS devnet stall ~1.4 epochs past the fork because a 74-validator set gives degenerate
