@@ -15,6 +15,15 @@ OWNER_ADDRESS ="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
 SSV_SEED_START_INDEX = 64         # first deposited-but-VC-idle validator index; VCs must stay in [0, this)
 SSV_MANAGED_VALIDATOR_COUNT = 10  # SSV-adopted validators, indices [64, 74)
 
+# Default boole_epoch when a params file leaves it unset — a far-future epoch that keeps the SSV Boole
+# fork dormant for any real run, shared by the SSV (node.star) and Anchor (utils.star) config renderers
+# so the two can't drift. Deliberately not a large "disabled" sentinel like MaxUint64 or the old 1<<63:
+# a Boole-aware node's Network.Validate() FATALs on a scheduled boole epoch above the epoch->slot
+# overflow cap (~5.76e17 = MaxUint64 / SlotsPerEpoch), only the exact MaxUint64 counts as unscheduled,
+# and the config pipeline float-rounds large ints anyway. 1e9 clears the cap and is float-exact.
+# See ssvlabs/ssv-mini#49.
+BOOLE_DORMANT_EPOCH = 1000000000
+
 ANCHOR_KEYSPLIT_SERVICE = "anchor-keysplit"
 ANCHOR_CLI_SERVICE_NAME = "anchor"
 
