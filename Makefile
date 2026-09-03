@@ -69,6 +69,7 @@ run: check-deps ensure-keys
 		fi; \
 		if [ -n "$(PRE_REGISTER_COUNT)" ]; then \
 			grep -q '^pre_register_count:' "$(GENERATED_PARAMS)" || { echo "Error: PRE_REGISTER_COUNT set but $(PARAMS_FILE) has no pre_register_count key"; exit 1; }; \
+			case "$(PRE_REGISTER_COUNT)" in ''|*[!0-9]*) echo "Error: PRE_REGISTER_COUNT must be a non-negative integer, got: '$(PRE_REGISTER_COUNT)'"; exit 1;; esac; \
 			sed -E 's|^(pre_register_count:).*|\1 $(PRE_REGISTER_COUNT)|' "$(GENERATED_PARAMS)" > "$(GENERATED_PARAMS).tmp" && mv "$(GENERATED_PARAMS).tmp" "$(GENERATED_PARAMS)"; \
 		fi; \
 		if [ -n "$(SSV_COUNT)" ]; then \

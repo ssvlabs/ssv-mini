@@ -76,5 +76,5 @@ def register_validators(plan, keyshare_artifact, network_address, rpc, genesis_c
         recipe=ExecRecipe(
             command=["/bin/sh", "-c", "node /app/registration/register-validators.cjs"],
         ),
-        description="Registering validators on-chain (ethers)",
+        description="Registering {} validator(s) on-chain (ethers)".format(str(pre_register_count) if pre_register_count > 0 else "all"),
     )
