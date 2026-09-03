@@ -2,8 +2,13 @@
 # Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas
 #        (or: make run PARAMS_FILE=params-gloas.yaml)
 #
-# Clients: ethpandaops glamsterdam-devnet-6 builds — the stock geth/lighthouse releases used by
-# params.yaml do NOT implement EIP-7732. devnet-6 is the live target (devnet-5 is superseded).
+# Clients: ethpandaops glamsterdam-devnet-8 builds — the stock geth/lighthouse releases used by
+# params.yaml do NOT implement EIP-7732. devnet-8 is the live target.
+# 2026-09-02: geth+lodestar bumped devnet-6 -> devnet-8 to match the node's devnet-8 Gloas spec (the
+# "source beacon-chain types from go-eth2-client" repin). The devnet-6 CL computed a different
+# EIP-7688/7916 progressive-merkleization block root and rejected every §4 submit with 500
+# BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021); devnet-8 clears it — the aetheria#176 boot validated
+# the full ePBS lifecycle on this pin (§4 published, §6 CONFIRMED, CL head continuity through the fork).
 # §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-6 (blocks land
 # canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
@@ -56,17 +61,18 @@
 network:
   participants:
   - el_type: geth
-    # Digest-pinned geth glamsterdam-devnet-6-fffa557 (see header): the moving glamsterdam-devnet-6 tag
-    # drifted into a stall-inducing build (ssvlabs/ssv-mini#38); this digest is validated to sustain
-    # liveness past the Gloas fork.
-    el_image: ethpandaops/geth@sha256:71252298807365697f246185b02223cdd5349fa15636f254bad041d12b4b3362
+    # Digest-pinned geth glamsterdam-devnet-8 (bumped from devnet-6 on 2026-09-02; resolved from the
+    # moving glamsterdam-devnet-8 tag). The devnet-6 geth was pinned for liveness (ssvlabs/ssv-mini#38);
+    # this devnet-8 build sustained liveness through the Gloas fork in the aetheria#176 boot (CL head
+    # continuity passed); keep watching for a stall on longer runs.
+    el_image: ethpandaops/geth@sha256:50fad280c7e2a2d7df835b46753c7633882824fbf545efb63c03451f910090e8
     cl_type: lodestar
-    # Digest-pinned Lodestar unstable-2e78647 (~2026-07-10) — implements §6 produce+publish (lighthouse
-    # v8.2.0 lacks the produce endpoint) AND the §5 proposer-preferences submit route
-    # POST /eth/v1/validator/proposer_preferences (lodestar #9570). The prior snapshot (mislabeled
-    # "v1.43.0" — it was a devnet-6 branch build) predated #9570 and 404'd that route, hard-failing
-    # (proposer) §5 on every proposal (ssvlabs/ssv-mini §5 finding); bumped past #9570 to clear it.
-    cl_image: ethpandaops/lodestar@sha256:c2615b9e9eb0635518332ba9f89166c356dbd5081a917f09b2d28c65627950a9
+    # Digest-pinned Lodestar glamsterdam-devnet-8 (bumped from the devnet-6-era unstable-2e78647 snapshot
+    # on 2026-09-02; resolved from the moving glamsterdam-devnet-8 tag). Rationale: the node's Gloas block
+    # types now follow the devnet-8 spec, so a devnet-6 CL computed a different EIP-7688/7916 progressive-
+    # merkleization root and rejected every §4 submit with 500 BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021);
+    # a devnet-8 CL matches the node's root. (devnet-8 lodestar retains §6 produce+publish and §5 proposer_preferences.)
+    cl_image: ethpandaops/lodestar@sha256:8bf3694f59b41b91f769e1fd8ee8a3cc1c45e3f70690458c2a49689fdc322035
     validator_count: 32
     count: 2
     supernode: true
