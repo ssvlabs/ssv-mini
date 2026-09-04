@@ -72,6 +72,18 @@ def run(plan, args):
     else:
         if vc_validators > constants.SSV_SEED_START_INDEX or deposited_validators < constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:
             fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep total validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed. For a standalone base-chain liveness probe with no SSV validators (ssvlabs/ssv-mini#38), set unsafe_skip_validator_layout_guard: true.".format(vc_validators, deposited_validators))
+    # Validate pre_register_count (the pool-split knob) here at plan time, before the enclave is built —
+    # bad input must fail OUT of the dangerous mode, not into it (failing at Step 4 leaves a half-built
+    # enclave to tear down). Negative or > the pool would fall back to registering the full set (the
+    # ValidatorAlreadyExists collision the split avoids); a positive count with pre_register_validators:
+    # false registers nothing while cohort P is expected. register-validators.cjs keeps its own [1, N]
+    # check as defence-in-depth.
+    pre_register_count = args.get("pre_register_count", 0)
+    if pre_register_count < 0 or pre_register_count >= constants.SSV_MANAGED_VALIDATOR_COUNT:
+        fail("pre_register_count ({}) must be < {} (the pool size): a positive value splits the pool (P = first N, cohort D = the rest) and must leave D non-empty; the full pool would leave D empty, so use 0 to register everything with no split.".format(pre_register_count, constants.SSV_MANAGED_VALIDATOR_COUNT))
+    if pre_register_count > 0 and not args.get("pre_register_validators", False):
+        fail("pre_register_count ({}) > 0 requires pre_register_validators: true — otherwise Step 4 is skipped and nothing registers while cohort P is expected. Set pre_register_validators: true (or PRE_REGISTER_VALIDATORS=true), or drop the count.".format(pre_register_count))
+
     ethereum_network = ethereum_package.run(plan, network_args)
 
     cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
@@ -144,19 +156,29 @@ def run(plan, args):
 
     # ── Step 4: Register validators on-chain ──
     # Default: skipped on the v2.0.0 contracts. The aetheria executor registers and funds its own
-    # validators (registration is payable/msg.value on v2.0.0) and expects a clean, empty cluster.
+    # validators (registration is payable/msg.value on v2.0.0) onto a clean, empty cluster. Under the
+    # pool split (pre_register_count > 0) the executor's cohort D instead registers onto the P-populated
+    # cluster — it passes the LIVE on-chain cluster snapshot (validatorCount N, N*2.5 ETH), not the zero
+    # struct this repo's P path uses, so nonce continuity AND the cluster snapshot both hold. Validated
+    # end-to-end by aetheria#176.
     #
     # Opt-in pre-registration (pre_register_validators: true): register the static keyshares on-chain
     # here so a standalone `kurtosis run` (no aetheria) yields operators that actually run validators.
     # Needed by consumers that gate CI on this testnet without the executor (e.g. sigp/anchor). This
     # is the devnet pre-registration path tracked in ssvlabs/ssv-mini#29.
     #
-    # ON-mode contract: the static keyshares are the same validator pool (indices 64-73) the aetheria
-    # executor's validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) register at test time,
-    # so combining pre_register_validators: true with those suites on the same enclave reverts with
-    # ValidatorAlreadyExists. Use standard (flag-off) enclaves for those suites.
+    # ON-mode contract: the static keyshares occupy the validator pool at indices 64-73. Pre-registering
+    # the FULL set (pre_register_count unset/0) collides with the aetheria executor's own
+    # validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) — both register the same pubkeys, so
+    # a combined enclave reverts with ValidatorAlreadyExists; use standard (flag-off) enclaves there.
+    # pre_register_count: N registers only the first N keyshares (P = indices [64, 64+N)), leaving
+    # [64+N, 74) for the executor to register as its own cohort (D) — the index-partitioned split that
+    # lets pre-registration and a registering suite share one enclave (aetheria#176). register_validators
+    # reads pre_register_count from args.
     if args.get("pre_register_validators", False):
-        plan.print("Step 4/5: Pre-registering validators on-chain (pre_register_validators=true)")
+        effective_count = pre_register_count if pre_register_count > 0 else constants.SSV_MANAGED_VALIDATOR_COUNT
+        plan.print("Step 4/5: Pre-registering {} validator(s) on-chain — cohort P = indices [{}, {}) (pre_register_validators=true, pre_register_count={})".format(
+            effective_count, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + effective_count, pre_register_count))
         interactions.register_validators(
             plan,
             keyshare_artifact,
