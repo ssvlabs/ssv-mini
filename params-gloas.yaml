@@ -73,6 +73,14 @@ network:
     # merkleization root and rejected every §4 submit with 500 BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021);
     # a devnet-8 CL matches the node's root. (devnet-8 lodestar retains §6 produce+publish and §5 proposer_preferences.)
     cl_image: ethpandaops/lodestar@sha256:8bf3694f59b41b91f769e1fd8ee8a3cc1c45e3f70690458c2a49689fdc322035
+    # VC cohort = validator_count*count = the always-on majority the chain self-justifies on while the SSV
+    # pool (indices [SSV_SEED_START_INDEX, +count)) is > 1/3 of the set — must equal
+    # constants.SSV_SEED_START_INDEX, the SSV seed start. Without a VC majority the chain can't justify
+    # before SSV adopts, and SSV's slashing protection (adoption-epoch highest-source vs the stuck source=0)
+    # then refuses every attestation as a surround vote — a permanent genesis-bootstrap deadlock
+    # (aetheria#176). This value is set per test suite by aetheria's provision-pool.sh (VC/count): the
+    # small default below (32*2 = 64 VC) for every suite, scaled up for glamsterdam-fork's large pool
+    # (e.g. 3600*2 = 7200 VC for a 3000-validator pool, ~29% SSV).
     validator_count: 32
     count: 2
     supernode: true
@@ -128,7 +136,7 @@ pre_register_count: 0
 # then adopt zero beacon validators (Step 4 skipped), so the larger VC set never overlaps the SSV seed.
 # Combining with pre_register_validators: true is rejected by main.star (that half is detectable in-repo).
 # The aetheria half can't be, so do NOT set this against an executor validator-registering suite
-# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap indices 64-73 -> double-sign -> slashing.
+# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap the SSV seed [64, 64+N) -> double-sign -> slashing.
 unsafe_skip_validator_layout_guard: false
 
 monitor:

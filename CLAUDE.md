@@ -53,7 +53,7 @@ Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
 - `pre_register_validators`: Bulk-register the full static keyshare set on-chain at bring-up under the deployer's owner (default: false; needed for per-validator fork-transition coverage, aetheria#141 A2). Registering the FULL set is incompatible with the executor's validator-registering suites (`(event)`/`(ptc)`/`(proposer)`/`(p2p)`) on the same enclave — both register the same pubkeys → `ValidatorAlreadyExists`. To share one enclave, partition the pool with `pre_register_count` below
-- `pre_register_count`: Partition the static keyshare pool when `pre_register_validators` is true — register only the first N keyshares (cohort P = indices [64, 64+N)), leaving [64+N, 74) for the executor to register as its own cohort D. The index-partitioned P⊎D split lets pre-registration and a validator-registering suite share one enclave (aetheria#176). 0 (default) registers the full set (no split); a positive count must be < the pool size so cohort D is non-empty. Only a CONTIGUOUS prefix is nonce-safe (the sharesData nonce sequence is 0-based; ssvlabs/ssv-mini#36)
+- `pre_register_count`: Partition the static keyshare pool when `pre_register_validators` is true — register only the first N keyshares (cohort P = indices [64, 64+N)), leaving [64+N, 64+SSV_MANAGED_VALIDATOR_COUNT) for the executor to register as its own cohort D. The index-partitioned P⊎D split lets pre-registration and a validator-registering suite share one enclave (aetheria#176). 0 (default) registers the full set (no split); a positive count must be < the pool size so cohort D is non-empty. Only a CONTIGUOUS prefix is nonce-safe (the sharesData nonce sequence is 0-based; ssvlabs/ssv-mini#36)
 - `unsafe_skip_validator_layout_guard`: Bypass main.star's 64/74 validator-layout guard so a **standalone** base-chain liveness probe can run >64 baseline validators (Gloas devnet stall investigation, ssvlabs/ssv-mini#38). Default false. Safe **only** when no SSV-managed validators are adopted on the enclave (bare run: `pre_register_validators: false` + no executor); combining with `pre_register_validators: true` is rejected in code, and it must not be set against an executor validator suite either, or the extra VCs overlap the seed at 64–73 → double-sign → slashing. See `params-gloas.yaml` for the full contract
 - `boole_epoch`: Boole fork activation epoch
 - `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
@@ -97,7 +97,7 @@ make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDAT
 
 - SSV nodes require EL at block 16+ (Event Syncer needs mature chain)
 - Contract deployment needs EL at block 1+
-- Static keys assume 4 operators and 10 validators at indices 64-73
+- Static keys assume 4 operators and `SSV_MANAGED_VALIDATOR_COUNT` validators at indices [64, 64+that); scale with `SSV_VALIDATOR_COUNT=N ./scripts/generate-static-keys.sh` (regenerate the aetheria seed to the same N)
 - Changing operator/validator counts requires `use_static_keys: false` or `make generate-keys`
 
 ## Health Checks

@@ -31,24 +31,54 @@ async function main() {
     throw new Error("PRE_REGISTER_COUNT must be an integer in [1, " + all.length + "], got: " + process.env.PRE_REGISTER_COUNT);
   }
   const shares = all.slice(0, count);
-  const publicKeys = shares.map((s) => s.payload.publicKey);
-  const sharesData = shares.map((s) => s.payload.sharesData);
   const operatorIds = shares[0].payload.operatorIds;
-  // Fresh cluster (never registered for this owner+operators).
-  const cluster = { validatorCount: 0, networkFeeIndex: 0, index: 0, active: true, balance: 0 };
 
-  // v2.0.0 registration is payable: clusters are collateralized with ETH via msg.value (not SSV
-  // tokens). 2.5 ETH/validator matches the aetheria executor's AMOUNT_PER_VALIDATOR (proven live
-  // to clear the liquidation threshold), keeping the two registration paths comparable when
-  // debugging cluster-balance issues.
-  const collateral = ethers.parseEther("2.5") * BigInt(publicKeys.length);
-  // ethers auto-estimates gas, but geth's eth_estimateGas under-estimates this nested call: real
-  // execution forwards only 63/64 of the remaining gas (EIP-150) into the SSVStaking delegatecall, so
-  // sending with exactly the estimate starves it into a bare revert (hit on some counts, e.g. 6, not
-  // others). Send with a 2x buffer over the estimate so the subcall always has enough forwarded gas.
-  const gasEstimate = await ssv.bulkRegisterValidator.estimateGas(publicKeys, operatorIds, sharesData, cluster, { value: collateral });
-  await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value: collateral, gasLimit: gasEstimate * 2n })).wait();
-  console.log("Registered " + publicKeys.length + " validator(s) with " + ethers.formatEther(collateral) + " ETH collateral");
+  // A single bulkRegisterValidator tx must stay under Ethereum's 128 KiB tx-size limit — each validator
+  // adds ~1.5 KiB of sharesData calldata, so ~85 is the ceiling (90 validators is ~136 KiB and the node
+  // rejects it as "oversized data"). Register in batches under that, threading the on-chain cluster
+  // snapshot (read back from each batch's ValidatorAdded event) into the next batch. Registration is
+  // v2.0.0-payable: 2.5 ETH/validator collateral (matches the executor's AMOUNT_PER_VALIDATOR, which
+  // clears the liquidation threshold) via msg.value.
+  const BATCH_SIZE = 50;
+  const perValidator = ethers.parseEther("2.5");
+  let cluster = { validatorCount: 0, networkFeeIndex: 0, index: 0, active: true, balance: 0 };
+
+  for (let i = 0; i < shares.length; i += BATCH_SIZE) {
+    const batch = shares.slice(i, i + BATCH_SIZE);
+    const publicKeys = batch.map((s) => s.payload.publicKey);
+    const sharesData = batch.map((s) => s.payload.sharesData);
+    const value = perValidator * BigInt(batch.length);
+    // geth's eth_estimateGas runs the lenient eth_call path and under-counts this nested call — real
+    // execution forwards only 63/64 of the remaining gas (EIP-150) into the SSVStaking delegatecall, so
+    // sending with exactly the estimate starves the subcall into a bare revert. Send with a 2x buffer.
+    const gasEstimate = await ssv.bulkRegisterValidator.estimateGas(publicKeys, operatorIds, sharesData, cluster, { value });
+    const receipt = await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value, gasLimit: gasEstimate * 2n })).wait();
+    cluster = clusterFromReceipt(ssv, receipt);
+    console.log("  Registered " + (i + batch.length) + "/" + shares.length + " validator(s)");
+  }
+  console.log("Registered " + shares.length + " validator(s) in batches of up to " + BATCH_SIZE);
+}
+
+// clusterFromReceipt reads the updated Cluster struct from the last ValidatorAdded event in a receipt, so
+// the next batch registers against the current on-chain cluster state (validatorCount, balance, ...).
+function clusterFromReceipt(ssv, receipt) {
+  for (let k = receipt.logs.length - 1; k >= 0; k--) {
+    let parsed;
+    try { parsed = ssv.interface.parseLog(receipt.logs[k]); } catch (_) { continue; }
+    if (parsed && parsed.name === "ValidatorAdded") {
+      // Read the Cluster struct by name, falling back to positional (?? is 0/false-safe) so this works
+      // whether or not the ABI names the tuple's components. Field order is the canonical v2 layout.
+      const c = parsed.args.cluster;
+      return {
+        validatorCount: c.validatorCount ?? c[0],
+        networkFeeIndex: c.networkFeeIndex ?? c[1],
+        index: c.index ?? c[2],
+        active: c.active ?? c[3],
+        balance: c.balance ?? c[4],
+      };
+    }
+  }
+  throw new Error("no ValidatorAdded event in the registration receipt — cannot read the cluster for the next batch");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
