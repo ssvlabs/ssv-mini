@@ -42,7 +42,12 @@ async function main() {
   // to clear the liquidation threshold), keeping the two registration paths comparable when
   // debugging cluster-balance issues.
   const collateral = ethers.parseEther("2.5") * BigInt(publicKeys.length);
-  await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value: collateral })).wait();
+  // ethers auto-estimates gas, but geth's eth_estimateGas under-estimates this nested call: real
+  // execution forwards only 63/64 of the remaining gas (EIP-150) into the SSVStaking delegatecall, so
+  // sending with exactly the estimate starves it into a bare revert (hit on some counts, e.g. 6, not
+  // others). Send with a 2x buffer over the estimate so the subcall always has enough forwarded gas.
+  const gasEstimate = await ssv.bulkRegisterValidator.estimateGas(publicKeys, operatorIds, sharesData, cluster, { value: collateral });
+  await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value: collateral, gasLimit: gasEstimate * 2n })).wait();
   console.log("Registered " + publicKeys.length + " validator(s) with " + ethers.formatEther(collateral) + " ETH collateral");
 }
 
