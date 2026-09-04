@@ -72,7 +72,7 @@ def anchor_testnet_artifact(plan, args):
                     "ssv_fork_schedule.yaml": struct(
                         template=read_file(base_path + "/ssv_fork_schedule.yaml"),
                         data = {
-                            "BooleEpoch": args.get("boole_epoch", 1 << 63),
+                            "BooleEpoch": args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH),
                         }
                     )
                 }

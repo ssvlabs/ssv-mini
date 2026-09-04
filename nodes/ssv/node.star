@@ -17,7 +17,7 @@ def generate_config(
         is_exporter,
         args,
 ):
-    boole_epoch = args.get("boole_epoch", 1 << 63)
+    boole_epoch = args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH)
     discovery = ""
     if enr == "":
         discovery = "mdns"
