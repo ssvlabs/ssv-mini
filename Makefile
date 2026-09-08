@@ -221,6 +221,19 @@ start-el:
 # back reporting the fault that was asked for. A switch that silently did not apply looks exactly
 # like a fault that fired and was correctly ignored — the one failure a test pass cannot detect
 # from the honest side. See qa/FAULTS.md on the ssv branch qa/gloas-m3-fault-menu.
+#
+# Prerequisite: the enclave's SSV image must be the instrumented build — `node/ssv-fault`, built
+# from the ssv branch `qa/gloas-m3-fault-menu` (a distinct tag so FAULT=none operators can keep
+# running the plain node/ssv image; see qa/FAULTS.md §10) — and $(SSV_REPO) (default ../ssv) must
+# be checked out on that same branch, because `go run ./qa/faults/cmd/list` below enumerates the
+# menu from it. On a stock node FAULT is simply ignored: you get the boot-banner timeout below, not
+# a clear error, so a missed prerequisite reads as flakiness rather than a setup mistake.
+#
+# Container resolution is label-based, not name-based: `docker ps --filter
+# label=kurtosis_service_name=... --filter label=kurtosis_enclave_uuid=...` scopes the match to
+# THIS enclave, so a co-tenant enclave running the same operator index (this repo supports
+# co-tenant enclaves by design — see lines 85, 99-101) cannot be picked by accident. A match count
+# other than 1 is always an error, never a "take the first" fallback.
 
 .PHONY: fault-list
 fault-list:
@@ -230,15 +243,35 @@ fault-list:
 fault:
 	@test -n "$(FAULT)" || { echo "Error: FAULT is required, e.g. make fault FAULT=vote-index-2 OP=5. Values: make fault-list"; exit 1; }
 	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make fault FAULT=$(FAULT) OP=5"; exit 1; }
-	@cd $(SSV_REPO) && go run ./qa/faults/cmd/list | grep -qx "$(FAULT)" || \
-		{ echo "Error: '$(FAULT)' is not in the menu. Values: make fault-list"; exit 1; }
-	@CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
-	if [ -z "$$CONTAINER" ]; then \
-		echo "Error: no running container matches ^ssv-node-$(OP)--. Likely causes: wrong OP, the"; \
-		echo "       container is gone, or the enclave is down. Nothing was archived or switched."; \
-		echo "       Check: docker ps --format '{{.Names}}' | grep ssv-node"; \
+	@MENU=$$( (cd $(SSV_REPO) && go run ./qa/faults/cmd/list) 2>&1 ); MENU_STATUS=$$?; \
+	if [ "$$MENU_STATUS" -ne 0 ]; then \
+		echo "Error: 'go run ./qa/faults/cmd/list' in \$$SSV_REPO=$(SSV_REPO) failed (exit $$MENU_STATUS)."; \
+		echo "       That is the menu command itself failing — wrong branch checked out (needs"; \
+		echo "       qa/gloas-m3-fault-menu), no Go toolchain, or a build error — NOT that '$(FAULT)' is"; \
+		echo "       an unknown value. Raw output:"; \
+		printf '%s\n' "$$MENU" | sed 's/^/       /'; \
 		exit 1; \
 	fi; \
+	printf '%s\n' "$$MENU" | grep -qxF "$(FAULT)" || \
+		{ echo "Error: '$(FAULT)' is not in the menu. Values: make fault-list"; exit 1; }
+	@ENCLAVE_UUID=$$(kurtosis enclave inspect $(ENCLAVE_NAME) --full-uuids 2>/dev/null | awk '/^UUID:/{print $$2}'); \
+	if [ -z "$$ENCLAVE_UUID" ]; then \
+		echo "Error: enclave '$(ENCLAVE_NAME)' was not found. Nothing was archived or switched."; \
+		echo "       Check: kurtosis enclave ls"; \
+		exit 1; \
+	fi; \
+	MATCH=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$(OP)" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}} {{.ID}}'); \
+	MATCH_N=$$(printf '%s\n' "$$MATCH" | grep -c .); \
+	if [ "$$MATCH_N" -ne 1 ]; then \
+		echo "Error: expected exactly 1 running container for ssv-node-$(OP) in enclave $(ENCLAVE_NAME),"; \
+		echo "       found $$MATCH_N. Likely causes: wrong OP, the container is gone, the enclave is"; \
+		echo "       down, or a co-tenant enclave also runs an ssv-node-$(OP). Nothing was archived or"; \
+		echo "       switched."; \
+		echo "       Check: docker ps --filter \"label=kurtosis_service_name=ssv-node-$(OP)\""; \
+		exit 1; \
+	fi; \
+	CONTAINER=$$(printf '%s' "$$MATCH" | awk '{print $$1}'); \
+	PRE_SWITCH_ID=$$(printf '%s' "$$MATCH" | awk '{print $$2}'); \
 	mkdir -p $(FAULT_LOG_DIR); \
 	ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
 	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
@@ -257,55 +290,93 @@ fault:
 		fi; \
 	fi; \
 	echo "──── Switching ssv-node-$(OP) to FAULT=$(FAULT) ────"; \
+	# --env replaces the WHOLE env var list, so if nodes.ssv.enable_traces is on for this operator, \
+	# the OTEL_EXPORTER_OTLP_TRACES_* pair set at bring-up is dropped here too (traces do not \
+	# survive a fault switch). The node still boots only because commit 86f8750 moved --config= \
+	# into the entrypoint instead of relying on this --env list; reverting that change would \
+	# silently break every switch below. \
 	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
 		--env FAULT=$(FAULT) \
-		--files "/ssv-config:ssv-config-$(OP).yaml"; \
+		--files "/ssv-config:ssv-config-$(OP).yaml" \
+	|| { echo "Error: the switch command failed; the container was NOT replaced. Pre-switch logs are in $$ARCHIVE."; exit 1; }; \
 	echo "──── Waiting for the boot banner (up to $(FAULT_BANNER_TIMEOUT)s) ────"; \
 	DEADLINE=$$(( $$(date +%s) + $(FAULT_BANNER_TIMEOUT) )); \
 	while [ "$$(date +%s)" -lt "$$DEADLINE" ]; do \
-		if docker logs "$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--")" 2>&1 | grep -q '"qa_fault":[[:space:]]*"$(FAULT)"'; then \
+		MATCH=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$(OP)" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}} {{.ID}}'); \
+		MATCH_N=$$(printf '%s\n' "$$MATCH" | grep -c .); \
+		if [ "$$MATCH_N" -ne 1 ]; then sleep 3; continue; fi; \
+		CUR_CONTAINER=$$(printf '%s' "$$MATCH" | awk '{print $$1}'); \
+		CUR_ID=$$(printf '%s' "$$MATCH" | awk '{print $$2}'); \
+		if [ "$$CUR_ID" = "$$PRE_SWITCH_ID" ]; then sleep 3; continue; fi; \
+		if docker logs "$$CUR_CONTAINER" 2>&1 | grep "QA FAULT INSTRUMENTATION ACTIVE" | tail -1 | grep -qF "$(FAULT)"; then \
 			echo "──── ssv-node-$(OP) is running FAULT=$(FAULT) ────"; exit 0; \
 		fi; \
 		sleep 3; \
 	done; \
-	echo "Error: ssv-node-$(OP) did not report FAULT=$(FAULT) within $(FAULT_BANNER_TIMEOUT)s."; \
-	echo "       The container has already been replaced. This is a verification failure, not"; \
-	echo "       necessarily a switch failure — confirm ssv-node-$(OP)'s actual state by hand before"; \
-	echo "       trusting this operator's evidence for this window."; \
-	echo "       Check: docker logs \$$(docker ps --format '{{.Names}}' | grep -m1 \"^ssv-node-$(OP)--\") | tail -40"; \
-	echo "       An unknown value aborts the node's startup by design; a dropped config mount does too."; \
+	echo "Error: do not record a verdict for ssv-node-$(OP)'s window until its actual state is confirmed"; \
+	echo "       by hand — ssv-node-$(OP) did not report FAULT=$(FAULT) within $(FAULT_BANNER_TIMEOUT)s."; \
+	echo "       Most likely cause: the enclave is not running the instrumented image — on a stock node"; \
+	echo "       FAULT is silently ignored, and this timeout is exactly what that looks like. Other"; \
+	echo "       causes: an unknown value aborts the node's startup by design, as does a dropped config"; \
+	echo "       mount; or the switch command above genuinely failed after passing its own exit check."; \
+	echo "       Check: docker logs \$$(docker ps --filter \"label=kurtosis_service_name=ssv-node-$(OP)\" --format '{{.Names}}') | tail -40"; \
 	echo "       The pre-switch logs are in $$ARCHIVE."; \
 	exit 1
 
 .PHONY: fault-off
 fault-off:
 	@test -n "$(OP)" || { echo "Error: OP is required, e.g. make fault-off OP=5"; exit 1; }
-	@CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
-	if [ -z "$$CONTAINER" ]; then \
-		echo "Error: no running container matches ^ssv-node-$(OP)--. Likely causes: wrong OP, the"; \
-		echo "       container is gone, or the enclave is down. Nothing was archived or switched."; \
-		echo "       Check: docker ps --format '{{.Names}}' | grep ssv-node"; \
+	@ENCLAVE_UUID=$$(kurtosis enclave inspect $(ENCLAVE_NAME) --full-uuids 2>/dev/null | awk '/^UUID:/{print $$2}'); \
+	if [ -z "$$ENCLAVE_UUID" ]; then \
+		echo "Error: enclave '$(ENCLAVE_NAME)' was not found. Nothing was archived or switched."; \
+		echo "       Check: kurtosis enclave ls"; \
 		exit 1; \
 	fi; \
+	MATCH=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$(OP)" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}} {{.ID}}'); \
+	MATCH_N=$$(printf '%s\n' "$$MATCH" | grep -c .); \
+	if [ "$$MATCH_N" -ne 1 ]; then \
+		echo "Error: expected exactly 1 running container for ssv-node-$(OP) in enclave $(ENCLAVE_NAME),"; \
+		echo "       found $$MATCH_N. Likely causes: wrong OP, the container is gone, the enclave is"; \
+		echo "       down, or a co-tenant enclave also runs an ssv-node-$(OP). Nothing was archived or"; \
+		echo "       switched."; \
+		echo "       Check: docker ps --filter \"label=kurtosis_service_name=ssv-node-$(OP)\""; \
+		exit 1; \
+	fi; \
+	CONTAINER=$$(printf '%s' "$$MATCH" | awk '{print $$1}'); \
+	PRE_SWITCH_ID=$$(printf '%s' "$$MATCH" | awk '{print $$2}'); \
 	mkdir -p $(FAULT_LOG_DIR); \
 	ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
 	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
 	docker logs "$$CONTAINER" > "$$ARCHIVE" 2>&1 || true; \
+	if ! grep -q '^{' "$$ARCHIVE"; then \
+		echo "  warning: no JSON log lines were captured in $$ARCHIVE. fault-off does not abort on this"; \
+		echo "  (that would strand the operator faulted), but this archive is the evidence for the fault"; \
+		echo "  window that is now ending — check it by hand: $$(head -c 200 "$$ARCHIVE")"; \
+	fi; \
 	echo "──── Clearing the fault on ssv-node-$(OP) ────"; \
 	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
 		--env FAULT=none \
-		--files "/ssv-config:ssv-config-$(OP).yaml"; \
+		--files "/ssv-config:ssv-config-$(OP).yaml" \
+	|| { echo "Error: the switch command failed; the container was NOT replaced. Pre-switch logs are in $$ARCHIVE."; exit 1; }; \
 	DEADLINE=$$(( $$(date +%s) + $(FAULT_BANNER_TIMEOUT) )); \
 	while [ "$$(date +%s)" -lt "$$DEADLINE" ]; do \
-		if docker logs "$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--")" 2>&1 | grep -q "no fault active"; then \
+		MATCH=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$(OP)" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}} {{.ID}}'); \
+		MATCH_N=$$(printf '%s\n' "$$MATCH" | grep -c .); \
+		if [ "$$MATCH_N" -ne 1 ]; then sleep 3; continue; fi; \
+		CUR_CONTAINER=$$(printf '%s' "$$MATCH" | awk '{print $$1}'); \
+		CUR_ID=$$(printf '%s' "$$MATCH" | awk '{print $$2}'); \
+		if [ "$$CUR_ID" = "$$PRE_SWITCH_ID" ]; then sleep 3; continue; fi; \
+		if docker logs "$$CUR_CONTAINER" 2>&1 | grep -q "no fault active"; then \
 			echo "──── ssv-node-$(OP) has no fault active ────"; exit 0; \
 		fi; \
 		sleep 3; \
 	done; \
-	echo "Error: ssv-node-$(OP) did not report 'no fault active' within $(FAULT_BANNER_TIMEOUT)s."; \
-	echo "       The container has already been replaced. This is a verification failure, not"; \
-	echo "       necessarily a switch failure — confirm ssv-node-$(OP)'s actual state by hand before"; \
-	echo "       trusting this operator's evidence for this window."; \
+	echo "Error: do not record a verdict for ssv-node-$(OP)'s window until its actual state is confirmed"; \
+	echo "       by hand — ssv-node-$(OP) did not report 'no fault active' within $(FAULT_BANNER_TIMEOUT)s."; \
+	echo "       Most likely cause: the enclave is not running the instrumented image — on a stock node"; \
+	echo "       FAULT is silently ignored, and this timeout is exactly what that looks like. Other"; \
+	echo "       causes: a dropped config mount aborts the node's startup; or the switch command above"; \
+	echo "       genuinely failed after passing its own exit check."; \
 	echo "       The pre-switch logs are in $$ARCHIVE."; \
 	exit 1
 
