@@ -232,17 +232,24 @@ fault:
 	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make fault FAULT=$(FAULT) OP=5"; exit 1; }
 	@cd $(SSV_REPO) && go run ./qa/faults/cmd/list | grep -qx "$(FAULT)" || \
 		{ echo "Error: '$(FAULT)' is not in the menu. Values: make fault-list"; exit 1; }
-	@mkdir -p $(FAULT_LOG_DIR)
-	@ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+	@CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
+	if [ -z "$$CONTAINER" ]; then \
+		echo "Error: no running container matches ^ssv-node-$(OP)--. Likely causes: wrong OP, the"; \
+		echo "       container is gone, or the enclave is down. Nothing was archived or switched."; \
+		echo "       Check: docker ps --format '{{.Names}}' | grep ssv-node"; \
+		exit 1; \
+	fi; \
+	mkdir -p $(FAULT_LOG_DIR); \
+	ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
 	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
-	CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
 	docker logs "$$CONTAINER" > "$$ARCHIVE" 2>&1 || true; \
-	if [ ! -s "$$ARCHIVE" ]; then \
+	if ! grep -q '^{' "$$ARCHIVE"; then \
 		if [ -n "$(ALLOW_EMPTY_ARCHIVE)" ]; then \
-			echo "  warning: archive is empty, continuing because ALLOW_EMPTY_ARCHIVE is set"; \
+			echo "  warning: no JSON log lines captured, continuing because ALLOW_EMPTY_ARCHIVE is set"; \
 		else \
-			echo "Error: the archive is empty, so the switch was NOT applied — it would destroy the"; \
-			echo "       operator's log buffer with no copy kept."; \
+			echo "Error: no JSON log lines were captured, so the switch was NOT applied — it would destroy"; \
+			echo "       the operator's log buffer with no usable copy kept."; \
+			echo "       $$ARCHIVE may hold a docker/daemon error instead of real logs — check it: $$(head -c 200 "$$ARCHIVE")"; \
 			echo "       Usual cause: the container is gone or docker is unreachable. If the enclave is wedged:"; \
 			echo "         kurtosis clean -a && docker rm -f kurtosis-logs-aggregator && kurtosis engine restart"; \
 			echo "       If the operator genuinely has no logs worth keeping: ALLOW_EMPTY_ARCHIVE=1 make fault FAULT=$(FAULT) OP=$(OP)"; \
@@ -262,6 +269,9 @@ fault:
 		sleep 3; \
 	done; \
 	echo "Error: ssv-node-$(OP) did not report FAULT=$(FAULT) within $(FAULT_BANNER_TIMEOUT)s."; \
+	echo "       The container has already been replaced. This is a verification failure, not"; \
+	echo "       necessarily a switch failure — confirm ssv-node-$(OP)'s actual state by hand before"; \
+	echo "       trusting this operator's evidence for this window."; \
 	echo "       Check: docker logs \$$(docker ps --format '{{.Names}}' | grep -m1 \"^ssv-node-$(OP)--\") | tail -40"; \
 	echo "       An unknown value aborts the node's startup by design; a dropped config mount does too."; \
 	echo "       The pre-switch logs are in $$ARCHIVE."; \
@@ -270,10 +280,16 @@ fault:
 .PHONY: fault-off
 fault-off:
 	@test -n "$(OP)" || { echo "Error: OP is required, e.g. make fault-off OP=5"; exit 1; }
-	@mkdir -p $(FAULT_LOG_DIR)
-	@ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+	@CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
+	if [ -z "$$CONTAINER" ]; then \
+		echo "Error: no running container matches ^ssv-node-$(OP)--. Likely causes: wrong OP, the"; \
+		echo "       container is gone, or the enclave is down. Nothing was archived or switched."; \
+		echo "       Check: docker ps --format '{{.Names}}' | grep ssv-node"; \
+		exit 1; \
+	fi; \
+	mkdir -p $(FAULT_LOG_DIR); \
+	ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
 	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
-	CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
 	docker logs "$$CONTAINER" > "$$ARCHIVE" 2>&1 || true; \
 	echo "──── Clearing the fault on ssv-node-$(OP) ────"; \
 	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
@@ -286,7 +302,11 @@ fault-off:
 		fi; \
 		sleep 3; \
 	done; \
-	echo "Error: ssv-node-$(OP) did not report 'no fault active' within $(FAULT_BANNER_TIMEOUT)s"; \
+	echo "Error: ssv-node-$(OP) did not report 'no fault active' within $(FAULT_BANNER_TIMEOUT)s."; \
+	echo "       The container has already been replaced. This is a verification failure, not"; \
+	echo "       necessarily a switch failure — confirm ssv-node-$(OP)'s actual state by hand before"; \
+	echo "       trusting this operator's evidence for this window."; \
+	echo "       The pre-switch logs are in $$ARCHIVE."; \
 	exit 1
 
 .PHONY: test-fault-switch
@@ -339,6 +359,7 @@ help:
 	@echo "  make fault FAULT=vote-index-2 OP=3         Archive OP's logs, switch its fault, verify banner"
 	@echo "  make fault-off OP=3                        Archive OP's logs, clear its fault, verify banner"
 	@echo "  make test-fault-switch OP=3                Run the fault-switch integration test"
+	@echo "  ALLOW_EMPTY_ARCHIVE=1 make fault ...        Skip the no-usable-logs abort (fault-off never aborts)"
 	@echo ""
 	@echo "Image building:"
 	@echo "  make prepare         Build SSV image (default: stage branch)"
