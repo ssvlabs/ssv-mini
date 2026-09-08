@@ -373,6 +373,10 @@ fault-off:
 		echo "  window that is now ending — check it by hand: $$(head -c 200 "$$ARCHIVE")"; \
 	fi; \
 	echo "──── Clearing the fault on ssv-node-$(OP) ────"; \
+	# --env replaces the WHOLE env var list, exactly as in `fault` above: if \
+	# nodes.ssv.enable_traces is on for this operator, the OTEL_EXPORTER_OTLP_TRACES_* pair set \
+	# at bring-up is dropped here too. Clearing a fault does NOT restore traces — only a fresh \
+	# bring-up does. \
 	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
 		--env FAULT=none \
 		--files "/ssv-config:ssv-config-$(OP).yaml" \

@@ -30,7 +30,7 @@ make run
 
 ```bash
 cd ../ssv && docker build -t node/ssv .
-cd ../ssv-mini && make restart-ssv-nodes
+cd ../ssv-mini && make restart-ssv-nodes   # NOT mid-scenario — see the warning below
 ```
 
 Or use the `ssv-mini` CLI tool from the SSV repo:
@@ -60,7 +60,7 @@ make help
 | `make show` | Show running services and ports |
 | `make logs` | Tail ssv-node-0 logs (`SERVICE=ssv-node-1` for others) |
 | `make clean` | Remove all enclaves |
-| `make restart-ssv-nodes` | Restart SSV nodes (after rebuilding image) |
+| `make restart-ssv-nodes` | Restart SSV nodes (after rebuilding image). **Never mid-scenario:** it is a bare, unarchived `kurtosis service update` — it wipes the log buffer and drops any active `FAULT`. Use `make fault` / `make fault-off` instead. |
 | `make prepare` | Clone SSV repo + build Docker image |
 | `make prepare-anchor` | Clone Anchor repo + build Docker image; useful when using custom branch |
 | `make prepare-monitor` | Clone E2M repo + build Docker image |
@@ -144,17 +144,38 @@ fixes it — **`docker logs <container>` is the only working read path.** Three 
 - The container printing plain-text lines from the node's own Makefile target before its JSON
   logging started — **fixed**, by exec'ing the `ssvnode` binary directly instead of going through
   `make`.
-- Kurtosis's own log-collection engine cannot read the resulting per-line JSON — **still open**.
-  It is well-evidenced (the enclave-wide fluent-bit filter parses each line's JSON and merges the
-  parsed fields into a shape the log engine does not expect) but it lives inside Kurtosis itself,
-  not in `ssv-mini` or `ssv`, so it is not fixed here.
+- Kurtosis's own log-collection engine cannot read the resulting per-line JSON — **by design, and
+  not fixable here without giving something up**. The enclave-wide fluent-bit filter parses each
+  line's JSON and hoists the parsed fields to the top level. That filter is *not* a Kurtosis
+  default: it is declared in the developer's own
+  `~/Library/Application Support/kurtosis/kurtosis-config.yml`, under
+  `kurtosis-clusters.docker.logs-collector.{parsers,filters}` (parser `ssv_json_time`).
 
-Every M3 scenario-card oracle is written as a `scout.py --env mini logs query` call. Until scout
-gains a `docker logs` fallback for `--env mini`, translate each one by hand, e.g.:
+  It is there on purpose — hoisting the fields and honouring `time_key: time` is what makes the
+  Grafana/Loki view (`kurtosis grafloki start`) show structured, queryable fields with correct
+  per-line timestamps. The cost is that Kurtosis's own per-week file store expects an all-string
+  record, so the hoisted ints and bools break its reader and `kurtosis service logs` returns
+  nothing — with **exit code 0 and the error on stderr**, so callers that only read stdout report
+  "no logs found" instead of a failure. One collector feeds both sinks, so you cannot have a
+  structured grafloki view and a working `kurtosis service logs` from the same config. Note that
+  `Preserve_Key` alone would not resolve this: the hoisted non-string fields are what break the
+  decode, not the dropped `log` key.
+
+Every M3 scenario-card oracle is written as a `scout.py --env mini logs query` call. Scout uses the
+broken `kurtosis service logs` path, so those oracles currently return nothing. Until scout reads
+mini logs another way — either a `docker logs` fallback or, better, pointing its existing LogQL
+backend at grafloki's Loki — translate each oracle by hand, e.g.:
 
 ```bash
-docker logs $(docker ps --filter label=kurtosis_service_name=ssv-node-5 --format '{{.Names}}') | grep '"qa_fault"'
+# Scope to THIS enclave — a co-tenant enclave can run its own ssv-node-5, and reading the wrong
+# one silently shows healthy logs for a node you are not testing.
+ENCLAVE_UUID=$(kurtosis enclave inspect localnet --full-uuids | awk '/^UUID:/{print $2}')
+docker logs $(docker ps --filter label=kurtosis_service_name=ssv-node-5 \
+                        --filter label=kurtosis_enclave_uuid=$ENCLAVE_UUID \
+                        --format '{{.Names}}') | grep '"qa_fault"'
 ```
+
+`make logs OP=5` and `./scripts/ssv-mini logs 5` already do this lookup for you.
 
 ## Configuration
 
