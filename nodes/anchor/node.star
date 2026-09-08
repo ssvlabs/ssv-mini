@@ -4,24 +4,36 @@ utils = import_module("../../utils/utils.star")
 ANCHOR_METRICS_PORT_NAME = "metrics"
 ANCHOR_METRICS_PORT = 5164
 
-# Start anchor nodes: first node starts alone (to get ENR), remaining start in parallel
-def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
-    IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
-
-    # Start the first node (bootnode)
-    files = get_anchor_files(plan, 0, key_pems[0], config)
-    command_arr = [
-        "node", "--testnet-dir", "/opt/testnet", "--beacon-nodes", cl_url,
-        "--execution-rpc", el_rpc, "--execution-ws", el_ws, "--datadir", "/opt/data",
-        "--enr-address", IP_PLACEHOLDER, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
+def _command_for(endpoints, boot_enr, metrics_port, ip_placeholder):
+    """Anchor's CLI takes COMMA-separated endpoint lists (value_delimiter = ',' at
+    anchor/cli/src/cli.rs:52,64). --execution-ws is a single SensitiveUrl, so it gets the
+    primary only."""
+    cmd = [
+        "node", "--testnet-dir", "/opt/testnet",
+        "--beacon-nodes", ",".join(endpoints.cl_urls),
+        "--execution-rpc", ",".join(endpoints.el_rpc_urls),
+        "--execution-ws", endpoints.el_ws_urls[0],
+        "--datadir", "/opt/data",
+        "--enr-address", ip_placeholder, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
         "--enr-quic-port", "9101", "--port", "9100", "--discovery-port", "9100", "--quic-port", "9101",
         "--logfile-max-number", "0", "--debug-level", "debug",
         # mitigation of https://github.com/sigp/anchor/issues/765
         "--subscribe-all-subnets",
-        # Prometheus metrics; anchor defaults the listen address to 127.0.0.1, which is unreachable
-        # from outside the container, so bind 0.0.0.0 for the published port to work.
-        "--metrics", "--metrics-address", "0.0.0.0", "--metrics-port", str(ANCHOR_METRICS_PORT),
+        # Prometheus metrics; anchor defaults the listen address to 127.0.0.1, which is
+        # unreachable from outside the container, so bind 0.0.0.0 for the published port.
+        "--metrics", "--metrics-address", "0.0.0.0", "--metrics-port", str(metrics_port),
     ]
+    if boot_enr != "":
+        cmd.extend(["--boot-nodes", boot_enr])
+    return cmd
+
+# Start anchor nodes: first node starts alone (to get ENR), remaining start in parallel
+def start(plan, num_nodes, operators, key_pems, config, image):
+    IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
+
+    # Start the first node (bootnode)
+    files = get_anchor_files(plan, 0, key_pems[0], config)
+    command_arr = _command_for(operators[0], "", ANCHOR_METRICS_PORT, IP_PLACEHOLDER)
 
     metrics_ports = {
         ANCHOR_METRICS_PORT_NAME: PortSpec(
@@ -55,8 +67,6 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
 
     # Read the ENR from the bootnode
     enr = utils.read_enr_from_file(plan, "anchor-node-0")
-    command_arr_with_boot = list(command_arr)
-    command_arr_with_boot.extend(["--boot-nodes", enr])
 
     # Start remaining anchor nodes in parallel
     if num_nodes > 1:
@@ -67,7 +77,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
             remaining_configs[name] = ServiceConfig(
                 image=image,
                 entrypoint=["anchor"],
-                cmd=command_arr_with_boot,
+                cmd=_command_for(operators[index], enr, ANCHOR_METRICS_PORT, IP_PLACEHOLDER),
                 files=files,
                 ports=metrics_ports,
                 private_ip_address_placeholder=IP_PLACEHOLDER,

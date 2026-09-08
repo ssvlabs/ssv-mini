@@ -177,7 +177,7 @@ def run(plan, args):
     if anchor_node_count > 0:
         plan.print("Step 5/5: Starting {} Anchor + {} SSV nodes".format(anchor_node_count, ssv_node_count))
         config = utils.anchor_testnet_artifact(plan, args)
-        enr = anchor_node.start(plan, anchor_node_count, topology.infra.cl_url, topology.infra.el_rpc, topology.infra.el_ws, pem_artifacts, config, anchor_image)
+        enr = anchor_node.start(plan, anchor_node_count, topology.operators, pem_artifacts, config, anchor_image)
     else:
         plan.print("Step 5/5: Starting {} SSV nodes".format(ssv_node_count))
 
