@@ -55,4 +55,23 @@ def run(plan, args):
     assert_eq(plan, "blindspot/addressable-as-a-pair", r.pairs, [[0], [1], [2], [4]])
     assert_eq(plan, "blindspot/no-warnings", r.warnings, [])
 
+    # validate_blindspot_pairs() is pure - the label+range-check half split out of
+    # _start_blindspot_proxies so resolve() can see blind-spot pairs before any service
+    # starts. An absent key behaves like [] (no blind-spot pairs).
+    v = topology.validate_blindspot_pairs([], ["cl-4-lodestar-geth"])
+    assert_eq(plan, "bs/empty-is-noop", v.entries, [])
+    assert_eq(plan, "bs/empty-labels", v.labels, [])
+
+    v = topology.validate_blindspot_pairs(
+        [{"upstream": 0, "strip": ["GLOAS_FORK_EPOCH"]}], ["cl-4-lodestar-geth"])
+    assert_eq(plan, "bs/upstream-resolved", v.entries[0].upstream, 0)
+    assert_eq(plan, "bs/strip-preserved", v.entries[0].strip, ["GLOAS_FORK_EPOCH"])
+    assert_eq(
+        plan, "bs/label-format", v.labels[0],
+        "blindspot-proxy-0 -> cl-4-lodestar-geth (strip GLOAS_FORK_EPOCH)")
+
+    # strip defaults to [GLOAS_FORK_EPOCH] when omitted.
+    v = topology.validate_blindspot_pairs([{"upstream": 0}], ["cl-4-lodestar-geth"])
+    assert_eq(plan, "bs/strip-default", v.entries[0].strip, ["GLOAS_FORK_EPOCH"])
+
     plan.print("ALL POSITIVE CASES PASSED")

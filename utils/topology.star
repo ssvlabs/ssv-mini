@@ -117,42 +117,98 @@ def _example(operator_count):
 
 BLINDSPOT_PORT = 4000
 
-def _start_blindspot_proxies(plan, args, all_participants):
-    """Start one spec-rewriting proxy per blindspot_pairs entry.
+def validate_blindspot_pairs(entries, real_pair_labels):
+    """Validate blindspot_pairs shape/range and compute each proxy's label - PURE.
+
+    This is the split-off half of what used to be _start_blindspot_proxies: it takes no
+    `plan`, touches no Kurtosis service/participant objects, and starts nothing. It exists
+    so that build() can learn the FULL pair_labels list (real participants + blind-spot
+    proxies) - which resolve() needs to range-check operator_pairs - before anything is
+    actually launched. Actually starting the proxy services is left to
+    _start_blindspot_proxies(), which only runs after resolve() has passed.
+
+    entries: raw args.get("blindspot_pairs", []) value - None means "not configured" so
+        callers should pass [] in that case, matching the old default.
+    real_pair_labels: one label per REAL participant, in pair-index order (today this is
+        each pair's beacon service name, e.g. "cl-4-lodestar-geth"). Used only to build the
+        proxy's descriptive label and to bound the `upstream` range - a blind-spot pair may
+        only proxy a real participant, never another proxy.
+
+    Returns struct(entries = [struct(upstream=int, strip=[string], name=string)],
+        labels = [string]). Fails on invalid input.
+    """
+    if type(entries) != "list":
+        fail("blindspot_pairs must be a list of {{upstream: <pair index>, strip: [<spec key>]}} " +
+             "dicts, got {}. Example: blindspot_pairs: [{{upstream: 0, strip: [GLOAS_FORK_EPOCH]}}]".format(
+                 type(entries)))
+
+    validated = []
+    labels = []
+    for i in range(len(entries)):
+        e = entries[i]
+
+        # A bare string/list/etc reaching e.get(...) below would blow up with a raw
+        # Starlark type error instead of naming the problem, so catch it here.
+        if type(e) != "dict":
+            fail(
+                "blindspot_pairs[{}] must be a dict shaped {{upstream: <pair index>, ".format(i) +
+                "strip: [<spec key>]}}, got {}. Example: {{upstream: 0, strip: [GLOAS_FORK_EPOCH]}}.".format(
+                    type(e)))
+
+        upstream_idx = e.get("upstream", None)
+        if type(upstream_idx) != "int":
+            fail("blindspot_pairs[{}].upstream must be an integer pair index, got {}.".format(
+                i, type(upstream_idx)))
+        if upstream_idx < 0 or upstream_idx >= len(real_pair_labels):
+            fail("blindspot_pairs[{}].upstream = {} is not a real pair (valid 0-{}). ".format(
+                i, upstream_idx, len(real_pair_labels) - 1) +
+                 "A blind-spot pair must proxy an actual participant, not another proxy.")
+
+        strip = e.get("strip", ["GLOAS_FORK_EPOCH"])
+        if type(strip) != "list" or len(strip) == 0:
+            fail("blindspot_pairs[{}].strip must be a non-empty list of spec keys, got {}.".format(
+                i, type(strip)))
+
+        # A non-string element would blow up at ",".join(strip) below with a raw Starlark
+        # type error instead of naming the problem, so catch it here.
+        for j in range(len(strip)):
+            if type(strip[j]) != "string":
+                fail(
+                    "blindspot_pairs[{}].strip[{}] must be a string spec key, got {}. ".format(
+                        i, j, type(strip[j])) +
+                    "Write spec keys as quoted strings, e.g. [\"GLOAS_FORK_EPOCH\"].")
+
+        name = "blindspot-proxy-{}".format(i)
+        validated.append(struct(upstream = upstream_idx, strip = strip, name = name))
+        labels.append("{} -> {} (strip {})".format(
+            name, real_pair_labels[upstream_idx], ",".join(strip)))
+
+    return struct(entries = validated, labels = labels)
+
+def _start_blindspot_proxies(plan, all_participants, validated_entries):
+    """Start one spec-rewriting proxy per already-validated blindspot_pairs entry.
+
+    Callers must run this ONLY after resolve() has validated operator_pairs against the
+    complete pair range (real participants + blind-spot labels). Starting these services
+    before that validation is exactly the bug this split fixes: a topology that fails
+    validation must never leave orphaned blindspot-proxy-N services behind.
 
     Each returns a synthetic "pair" whose CL is the proxy and whose EL is the upstream
     pair's EL untouched - the proxy sits on the CL path only.
     """
-    entries = args.get("blindspot_pairs", [])
-    if type(entries) != "list":
-        fail("blindspot_pairs must be a list of {upstream: <pair index>, strip: [<spec key>]}")
-
     extra = []
-    for i in range(len(entries)):
-        e = entries[i]
-        upstream_idx = e.get("upstream", None)
-        if type(upstream_idx) != "int":
-            fail("blindspot_pairs[{}].upstream must be an integer pair index".format(i))
-        if upstream_idx < 0 or upstream_idx >= len(all_participants):
-            fail("blindspot_pairs[{}].upstream = {} is not a real pair (valid 0-{}). ".format(
-                i, upstream_idx, len(all_participants) - 1) +
-                 "A blind-spot pair must proxy an actual participant, not another proxy.")
-        strip = e.get("strip", ["GLOAS_FORK_EPOCH"])
-        if type(strip) != "list" or len(strip) == 0:
-            fail("blindspot_pairs[{}].strip must be a non-empty list of spec keys".format(i))
-
-        up = all_participants[upstream_idx]
-        name = "blindspot-proxy-{}".format(i)
+    for entry in validated_entries:
+        up = all_participants[entry.upstream]
         svc = plan.add_service(
-            name = name,
+            name = entry.name,
             description = "Starting {} in front of {}".format(
-                name, up.cl_context.beacon_service_name),
+                entry.name, up.cl_context.beacon_service_name),
             config = ServiceConfig(
                 image = "blindspot-proxy",
                 env_vars = {
                     "UPSTREAM": "http://{}:{}".format(
                         up.cl_context.ip_addr, up.cl_context.http_port),
-                    "STRIP": ",".join(strip),
+                    "STRIP": ",".join(entry.strip),
                     "LISTEN_PORT": str(BLINDSPOT_PORT),
                 },
                 ports = {
@@ -165,8 +221,6 @@ def _start_blindspot_proxies(plan, args, all_participants):
             ),
         )
         extra.append(struct(
-            label = "{} -> {} (strip {})".format(
-                name, up.cl_context.beacon_service_name, ",".join(strip)),
             cl_url = "http://{}:{}".format(svc.ip_address, BLINDSPOT_PORT),
             el_rpc = "http://{}:{}".format(up.el_context.ip_addr, up.el_context.rpc_port_num),
             el_ws = "ws://{}:{}".format(up.el_context.ip_addr, up.el_context.ws_port_num),
@@ -196,11 +250,20 @@ def build(plan, args, all_participants):
     if operator_count == 0:
         fail("no operators configured: nodes.anchor.count and nodes.ssv.count are both 0")
 
-    blindspots = _start_blindspot_proxies(plan, args, all_participants)
-    for b in blindspots:
-        pair_labels.append(b.label)
+    # Only the LABEL COUNT needs to precede validation, not the service launch: validate and
+    # label blind-spot pairs (pure, starts nothing) so resolve() can range-check
+    # operator_pairs against the complete pair list, real + blind-spot, in one pass.
+    real_pair_labels = [p.cl_context.beacon_service_name for p in all_participants]
+    blindspot_validated = validate_blindspot_pairs(
+        args.get("blindspot_pairs", []), real_pair_labels)
+    pair_labels += blindspot_validated.labels
 
     r = resolve(args.get("operator_pairs", None), operator_count, pair_labels)
+
+    # Only after resolve() has validated the WHOLE topology do we actually start services -
+    # a topology that fails validation must never leave orphaned blindspot-proxy-N services
+    # behind (see this module's docstring: no service starts before validation completes).
+    blindspots = _start_blindspot_proxies(plan, all_participants, blindspot_validated.entries)
 
     operators = []
     for op in range(operator_count):

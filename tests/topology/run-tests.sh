@@ -12,7 +12,7 @@ set -uo pipefail
 #     would make the success marker unobservable. Without --dry-run the value is printed.
 #     fail() aborts during evaluation either way and exits 1.
 #   - Pin --enclave so all runs reuse ONE enclave. Each fresh enclave costs a few seconds
-#     of setup, and this suite makes 9 invocations. These files add no services, so the
+#     of setup, and this suite makes 16 invocations. These files add no services, so the
 #     shared enclave stays empty. It is removed at the end.
 #
 # Usage: make test-topology   (or ./tests/topology/run-tests.sh)
@@ -60,7 +60,13 @@ set -- \
   out_of_range "out of range (valid 0-3)" \
   negative_index "out of range (valid 0-3)" \
   duplicate "is listed twice" \
-  blindspot_not_declared "out of range (valid 0-3)"
+  blindspot_not_declared "out of range (valid 0-3)" \
+  bs_not_a_list "blindspot_pairs must be a list of" \
+  bs_entry_not_dict "must be a dict shaped" \
+  bs_upstream_not_int "upstream must be an integer pair index" \
+  bs_upstream_out_of_range "is not a real pair (valid 0-3)" \
+  bs_strip_empty "must be a non-empty list of spec keys" \
+  bs_strip_not_string "must be a string spec key"
 
 while [ $# -gt 0 ]; do
   case="$1"

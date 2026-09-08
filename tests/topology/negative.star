@@ -19,6 +19,21 @@ CASES = {
     "duplicate":     lambda: topology.resolve([[0, 0], [1], [2], [3]], 4, LABELS_4),
     # With 4 real pairs and no blind-spot pair, index 4 is still out of range.
     "blindspot_not_declared": lambda: topology.resolve([[0], [1], [2], [4]], 4, LABELS_4),
+
+    # validate_blindspot_pairs() is the pure validation+labelling half split out of
+    # _start_blindspot_proxies (final-review fix: services must never start before the
+    # WHOLE topology, including operator_pairs, has been validated). Its branches are
+    # tested here exactly like resolve()'s.
+    "bs_not_a_list":      lambda: topology.validate_blindspot_pairs("nope", LABELS_4),
+    "bs_entry_not_dict":  lambda: topology.validate_blindspot_pairs(["nope"], LABELS_4),
+    "bs_upstream_not_int": lambda: topology.validate_blindspot_pairs(
+        [{"upstream": "0", "strip": ["GLOAS_FORK_EPOCH"]}], LABELS_4),
+    "bs_upstream_out_of_range": lambda: topology.validate_blindspot_pairs(
+        [{"upstream": 4, "strip": ["GLOAS_FORK_EPOCH"]}], LABELS_4),
+    "bs_strip_empty": lambda: topology.validate_blindspot_pairs(
+        [{"upstream": 0, "strip": []}], LABELS_4),
+    "bs_strip_not_string": lambda: topology.validate_blindspot_pairs(
+        [{"upstream": 0, "strip": [123]}], LABELS_4),
 }
 
 def run(plan, args):
