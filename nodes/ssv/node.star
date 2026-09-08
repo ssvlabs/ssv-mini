@@ -17,6 +17,16 @@ def generate_config(
         args,
 ):
     boole_epoch = args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH)
+    # Traces are opt-in (params key: nodes.ssv.enable_traces, default False). Nothing in this repo
+    # provisions an OTLP collector, so a failed export prints a plain-text line to stdout — which
+    # breaks Kurtosis's JSON log parser for the whole service (kurtosis service logs / scout.py
+    # --env mini logs query then return nothing for that node). Anyone who wants traces must both
+    # set this key to true AND run a collector reachable at the OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+    # in get_service_config below (no profile in this repo starts one). cli/operator/start_node.go's
+    # buildObservabilityOptions only calls observability.WithTraces() when this config field is
+    # true, so leaving it False here means the OTEL env vars are never read at all — the node never
+    # attempts an export.
+    enable_traces = args["nodes"].get("ssv", {}).get("enable_traces", False)
     discovery = ""
     if enr == "":
         discovery = "mdns"
@@ -50,7 +60,7 @@ def generate_config(
         ExporterMode="archive" if is_exporter else "standard",
         SSVAPIPort=SSV_API_PORT,
         MetricsAPIPort=SSV_METRICS_PORT,
-        EnableTraces=True,
+        EnableTraces=enable_traces,
         BooleEpoch=boole_epoch,
     )
 
@@ -70,9 +80,19 @@ def generate_config(
 
 SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
 
-def get_service_config(index, config_artifact, image):
+def get_service_config(index, config_artifact, image, enable_traces = False):
     """Returns a ServiceConfig for an SSV node without starting it (for use with plan.add_services)."""
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
+
+    # CONFIG_PATH is always needed; the OTEL pair is added only when traces are on (see the
+    # enable_traces comment in generate_config above) so a node started with traces off carries no
+    # reference at all to the alloy endpoint nobody provisions.
+    env_vars = {
+        "CONFIG_PATH": config_path,
+    }
+    if enable_traces:
+        env_vars["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"] = "grpc"
+        env_vars["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = "http://alloy:4317"
 
     return ServiceConfig(
         image=image,
@@ -93,11 +113,7 @@ def get_service_config(index, config_artifact, image):
                 application_protocol="http",
             ),
         },
-        env_vars={
-            "CONFIG_PATH": config_path,
-            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
-            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
-        },
+        env_vars=env_vars,
         files={
             SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },
