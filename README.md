@@ -81,11 +81,50 @@ Use `EL_SERVICE=el-2-geth-lighthouse` to target the second EL node.
 
 ### Switching an M3 fault
 
+```bash
+make fault-list                          # the 19 values
+make fault FAULT=vote-index-2 OP=5       # archive, switch, verify
+make fault-off OP=5
+```
+
+`make fault` rejects a value that is not in the menu **before** it touches the enclave, and fails
+fast if `OP`'s container cannot be resolved — in both cases nothing is archived and nothing is
+switched. Otherwise it archives the operator's buffered logs to `.fault-logs/` first, because the
+switch destroys them, and aborts if the archive holds no JSON log lines — pass
+`ALLOW_EMPTY_ARCHIVE=1` only when the operator genuinely has no logs worth keeping (`fault-off`
+never applies this check). It then fails non-zero unless the node comes back within
+`FAULT_BANNER_TIMEOUT` (default 180 s) reporting the requested fault; on that timeout it says
+explicitly that the container has already been replaced — treat that as a verification failure to
+check by hand, not proof the switch itself failed. `make fault-off OP=5` runs the same
+archive-then-verify sequence with `FAULT=none`.
+
 A fault switch is a `kurtosis service update`, which re-creates the container: the node's buffered
 logs are lost and it resyncs before it takes part in duties again. Measured on a 4-node Gloas
 enclave on 2026-09-08: **7 s** from the update to the boot banner, **1 slot** until the
 operator injected its first fault. `make fault` archives the logs before switching for exactly this
 reason. A `kurtosis service stop` + `start` **does** preserve the container filesystem.
+
+### Reading ssv-node logs on `--env mini`
+
+`scout.py --env mini logs query` returns nothing for `ssv-node` on this rig, and no query change
+fixes it — **`docker logs <container>` is the only working read path.** Three causes were found:
+
+- Unconditional OTLP trace export to a collector no profile here creates — **fixed**, gated behind
+  `nodes.ssv.enable_traces` (default off, see `params.yaml`).
+- The container printing plain-text lines from the node's own Makefile target before its JSON
+  logging started — **fixed**, by exec'ing the `ssvnode` binary directly instead of going through
+  `make`.
+- Kurtosis's own log-collection engine cannot read the resulting per-line JSON — **still open**.
+  It is well-evidenced (the enclave-wide fluent-bit filter parses each line's JSON and merges the
+  parsed fields into a shape the log engine does not expect) but it lives inside Kurtosis itself,
+  not in `ssv-mini` or `ssv`, so it is not fixed here.
+
+Every M3 scenario-card oracle is written as a `scout.py --env mini logs query` call. Until scout
+gains a `docker logs` fallback for `--env mini`, translate each one by hand, e.g.:
+
+```bash
+docker logs $(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-5--") | grep '"qa_fault"'
+```
 
 ## Configuration
 

@@ -127,6 +127,21 @@ curl -s -X POST -H "Content-Type: application/json" \
 - Default: 4-operator clusters with Byzantine fault tolerance
 - `tail -f /dev/null` for idle service entrypoints (not `sleep 99999`)
 
+## M3 Fault Injection
+
+- Switch a fault with `make fault FAULT=<value> OP=<n>` (`make fault-off OP=<n>` to clear it) —
+  never a bare `kurtosis service update`. `make fault` archives the operator's logs first (the
+  switch destroys them) and verifies the node reports the requested fault before returning; a bare
+  `service update` skips both, and a switch that silently didn't apply looks identical to a fault
+  that fired and was correctly ignored — the one failure a test pass cannot detect otherwise.
+- `FAULT` is read once at boot. There is no warm switch — every fault change recreates the
+  container (~7 s to the boot banner, ~1 slot to the first injected fault).
+- `docker logs <container>` is the only working read path for `ssv-node` on `--env mini`.
+  `scout.py --env mini logs query` returns nothing for this service here — a Kurtosis
+  log-collection-engine limitation, not an `ssv-mini`/`ssv` defect (see README's "Reading ssv-node
+  logs on `--env mini`"). Translate any M3 scenario-card oracle written as a scout query into a
+  `docker logs` grep by hand.
+
 ## Troubleshooting
 
 - **Kurtosis version mismatch**: `brew upgrade kurtosis-tech/tap/kurtosis-cli && kurtosis engine restart`
