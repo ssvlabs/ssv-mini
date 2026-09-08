@@ -17,6 +17,8 @@ CASES = {
     "out_of_range":  lambda: topology.resolve([[0], [1], [2], [4]], 4, LABELS_4),
     "negative_index": lambda: topology.resolve([[-1], [1], [2], [3]], 4, LABELS_4),
     "duplicate":     lambda: topology.resolve([[0, 0], [1], [2], [3]], 4, LABELS_4),
+    # With 4 real pairs and no blind-spot pair, index 4 is still out of range.
+    "blindspot_not_declared": lambda: topology.resolve([[0], [1], [2], [4]], 4, LABELS_4),
 }
 
 def run(plan, args):

@@ -47,4 +47,12 @@ def run(plan, args):
     r = topology.resolve([[0], [0]], 2, ["cl-1-lodestar-geth / el-1-geth-lodestar"])
     assert_eq(plan, "single-pair", r.pairs, [[0], [0]])
 
+    # Blind-spot pairs are appended AFTER the real participants, so they are addressable by
+    # index like any other pair and pair 0 is always real (which is what lets infra never
+    # resolve to a proxy).
+    labels_5 = LABELS_4 + ["blindspot-proxy-0 -> cl-4-lodestar-geth (strip GLOAS_FORK_EPOCH)"]
+    r = topology.resolve([[0], [1], [2], [4]], 4, labels_5)
+    assert_eq(plan, "blindspot/addressable-as-a-pair", r.pairs, [[0], [1], [2], [4]])
+    assert_eq(plan, "blindspot/no-warnings", r.warnings, [])
+
     plan.print("ALL POSITIVE CASES PASSED")

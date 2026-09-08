@@ -59,7 +59,8 @@ set -- \
   index_not_int "must be an integer pair index" \
   out_of_range "out of range (valid 0-3)" \
   negative_index "out of range (valid 0-3)" \
-  duplicate "is listed twice"
+  duplicate "is listed twice" \
+  blindspot_not_declared "out of range (valid 0-3)"
 
 while [ $# -gt 0 ]; do
   case="$1"

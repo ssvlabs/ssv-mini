@@ -143,6 +143,28 @@ operators sign with the same keys. With four pairs use `validator_count: 16` eac
 
 Run the validation suite for this map with `make test-topology`.
 
+### Fork blind spot (`blindspot_pairs`)
+
+`blindspot_pairs` starts a spec-rewriting proxy in front of an existing pair's beacon node
+and appends the proxy as a NEW pair index, right after the real participants (pair 0 always
+stays a real pair — `infra`, the contract deploy, the block-height gates, the keysplit,
+validator registration and the monitor never see a rewritten spec).
+
+```yaml
+blindspot_pairs:
+  - upstream: 3               # pair 3's CL is proxied; its EL is untouched
+    strip: [GLOAS_FORK_EPOCH]
+operator_pairs: [[0], [1], [2], [4]]  # op3 now points at pair 4, the proxy
+```
+
+- The proxy **deletes** the listed spec key; it never rewrites it to a far-future value. A
+  far-future value makes the node log the INFO "fork scheduled" line instead, which is the
+  wrong oracle for TRN-04 (the alert watches for the *missing* Info line).
+- Limits: the proxy only sits on the CL path (the EL is the upstream pair's, untouched), and
+  it adds a network hop — never route timing or fault-injection scenarios through it.
+- Requires `make prepare-blindspot-proxy` before bring-up. See the commented example in
+  `params-gloas-multibn.yaml` for the full block plus the TRN-05 passthrough call.
+
 ## Architecture
 
 ```
