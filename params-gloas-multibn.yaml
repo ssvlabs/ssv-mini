@@ -1,0 +1,174 @@
+# Gloas / ePBS (EIP-7732) per-operator beacon/execution node isolation profile.
+# Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas-multibn
+#        (or: make run PARAMS_FILE=params-gloas-multibn.yaml)
+#
+# This profile exists so each operator gets its OWN beacon node and execution node instead of
+# sharing one CL/EL pair (see operator_pairs below). That isolation is what the fault and timing
+# scenarios need (PTC-06, FLT-01/03/04/08, TRN-08, PRF-06, EPE-02/05): a fault or restart on one
+# operator's BN must not touch the others. Default topology is 4 x Lodestar (client diversity is a
+# different, orthogonal goal — see the commented-out diversity variant in network.participants).
+#
+# params-gloas.yaml remains the shared-CL baseline (one BN for all operators) for M1/M6
+# comparability — do not fold this profile back into it.
+
+network:
+  participants:
+    # FOUR SEPARATE PAIRS, ONE CLIENT. Isolation and diversity are different goals and most
+    # scenarios need isolation: PTC-06, FLT-01/03/04/08, TRN-08, PRF-06, EPE-02/05 all need
+    # N independent beacon nodes, not N different clients. Four Lodestar pairs give full
+    # isolation at zero client-conformance risk. The diversity variant is commented below.
+    #
+    # validator_count MUST total <= 64 across all groups: main.star:45-52 sums
+    # validator_count * count and :73-74 fails above 64, because the aetheria seed occupies
+    # indices 64-73 and an overlap makes the VCs and the SSV operators run the same keys
+    # -> double-sign. 4 x 16 = 64, exactly at the ceiling.
+    - el_type: geth
+      el_image: ethpandaops/geth:master@sha256:d49060998ab8605a66f9c0614ba507a72954322b2e8c978a57f1201cf151f9d2
+      cl_type: lodestar
+      cl_image: chainsafe/lodestar:v1.47.0@sha256:5593f6e97912d6aa47114f99850c516062902c7eafd502d79ea0acaa3d38ba30
+      cl_extra_params:
+        - --subscribeAllSubnets
+      validator_count: 16
+      count: 1
+      supernode: true
+    - el_type: geth
+      el_image: ethpandaops/geth:master@sha256:d49060998ab8605a66f9c0614ba507a72954322b2e8c978a57f1201cf151f9d2
+      cl_type: lodestar
+      cl_image: chainsafe/lodestar:v1.47.0@sha256:5593f6e97912d6aa47114f99850c516062902c7eafd502d79ea0acaa3d38ba30
+      cl_extra_params:
+        - --subscribeAllSubnets
+      validator_count: 16
+      count: 1
+      supernode: true
+    - el_type: geth
+      el_image: ethpandaops/geth:master@sha256:d49060998ab8605a66f9c0614ba507a72954322b2e8c978a57f1201cf151f9d2
+      cl_type: lodestar
+      cl_image: chainsafe/lodestar:v1.47.0@sha256:5593f6e97912d6aa47114f99850c516062902c7eafd502d79ea0acaa3d38ba30
+      cl_extra_params:
+        - --subscribeAllSubnets
+      validator_count: 16
+      count: 1
+      supernode: true
+    - el_type: geth
+      el_image: ethpandaops/geth:master@sha256:d49060998ab8605a66f9c0614ba507a72954322b2e8c978a57f1201cf151f9d2
+      cl_type: lodestar
+      cl_image: chainsafe/lodestar:v1.47.0@sha256:5593f6e97912d6aa47114f99850c516062902c7eafd502d79ea0acaa3d38ba30
+      cl_extra_params:
+        - --subscribeAllSubnets
+      validator_count: 16
+      count: 1
+      supernode: true
+
+    # ── CL DIVERSITY VARIANT (TRN-06, EPE-07, PTC-05, PTC-09, INT-06) ──
+    # Swap the groups above for these when a scenario needs DIFFERENT clients. Read the two
+    # constraints first:
+    #   1. LIGHTHOUSE MUST NOT SERVE PTC. lighthouse:unstable still registers
+    #      payload_attestation_data/{slot} as a PATH param and returns 404 (not 204) for an
+    #      empty slot; our client calls the canonical query form. sigp/lighthouse#9959 is
+    #      approved and mergeable but is not in a build yet. Putting 2 of 4 operators on
+    #      Lighthouse makes PTC no-quorum BY CONSTRUCTION, before any fault is injected -
+    #      which is exactly how the mixed-Anchor run's 30/30 no_quorum looked. So the
+    #      Lighthouse pair may only back operators whose PTC behaviour is not being measured.
+    #   2. Do NOT add Prysm. It is two consensus-specs alphas behind, has had no release
+    #      since 2026-07-29, and is deliberately held off devnet trunk for failing the
+    #      non-finality devnet.
+    #
+    # - cl_type: lighthouse
+    #   cl_image: ethpandaops/lighthouse:unstable@sha256:e05f5c173e4ed01869ed7fba2a7cb977e722faf626c1adb75d9a9586ddaa49f4
+    # - cl_type: teku
+    #   cl_image: ethpandaops/teku:master@sha256:dd41d279c837b91f3927c1ab6e0e700582db813d8db6015f0358c5e73c9e8ed1
+    #   # Teku is the only client that REQUIRES POST produceBlockV4, so it is the one BN that
+    #   # proves the node's POST path rather than tolerating the legacy GET.
+    # - cl_type: nimbus
+    #   cl_image: ethpandaops/nimbus-eth2:unstable@sha256:ed4657773dbf21cdf07973b84d555353875052baff1e45bed09e59cae3328ca7
+
+  additional_services:
+    - dora
+
+  # dora's default image can't render Gloas blocks; pin a Gloas-capable master build.
+  dora_params:
+    image: ethpandaops/dora:master-0e63023
+
+  # Gloas genesis needs >= 6.1.3.
+  ethereum_genesis_generator_params:
+    image: ethpandaops/ethereum-genesis-generator:6.2.1
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0        # Fulu must precede Gloas — activate at genesis
+    gloas_fork_epoch: 4       # ePBS fork; small so the transition lands a few minutes in (tune freely)
+    perfect_peerdas_enabled: false
+    preregistered_validator_count: 74
+
+    # ethereum-package@main exposes the four Gloas duty deadlines. These values are the
+    # consensus-specs mainnet defaults at both alpha.14 and beta.0; they are written out
+    # explicitly so TIM-01 and TIM-05 have a single knob to turn.
+    attestation_due_bps_gloas: 2500
+    aggregate_due_bps_gloas: 5000
+    sync_message_due_bps_gloas: 2500
+    contribution_due_bps_gloas: 5000
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+# pre_register_validators for the gloas net. See params.yaml for the flag's full semantics and its
+# incompatibility with the executor's validator-registering suites. Enabled here, the deployer
+# bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
+# from genesis — which the aetheria (transition) suite's per-validator fork-transition checks need
+# (aetheria#141 A2).
+pre_register_validators: true
+
+# unsafe_skip_validator_layout_guard bypasses main.star's 64/74 validator-layout guard so a STANDALONE
+# base-chain liveness probe can run more than 64 baseline validators (ssvlabs/ssv-mini#38: does the
+# Gloas/ePBS devnet stall ~1.4 epochs past the fork because a 74-validator set gives degenerate
+# attestation-committee / PTC coverage?). To use it: set this true, raise the participants'
+# validator_count (and/or count) AND preregistered_validator_count together to the new VC total (e.g.
+# validator_count: 64 x count: 2 = 128 VCs, preregistered_validator_count: 128), and set
+# monitor.enabled: false (the monitor needs SSV validators and FATAL-crashes on a head-stall), then run.
+# SAFE ONLY on a bare run with pre_register_validators: false AND no aetheria executor - the SSV nodes
+# then adopt zero beacon validators (Step 4 skipped), so the larger VC set never overlaps the SSV seed.
+# Combining with pre_register_validators: true is rejected by main.star (that half is detectable in-repo).
+# The aetheria half can't be, so do NOT set this against an executor validator-registering suite
+# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap indices 64-73 -> double-sign -> slashing.
+unsafe_skip_validator_layout_guard: false
+
+monitor:
+  enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
+
+boole_epoch: 1000000000   # dormant far-future epoch — never reached in a run, so ePBS stays pre-Boole (Alan). Not math.MaxUint64/1<<63: the node's Validate() overflows on a scheduled boole epoch > ~5.76e17, only the exact MaxUint64 sentinel counts as unscheduled, and the config pipeline float-rounds it.
+
+# Index = global operator index (Anchor first, then SSV). Value = ordered pair indices;
+# entry 0 is the primary, the rest are failover targets in order.
+#
+# Strict one-BN-each is the default: it is what the fault and timing scenarios need, and a
+# shared primary silently disables per-operator fault isolation.
+#
+# For the §6 envelope-produce case, give the BUILDING operator a fallback list. beacon-APIs
+# block.v4 requires the envelope to be fetched from the beacon node that produced the block,
+# so on a strict split a non-builder fails produce, never starts the envelope duty, and
+# every SSV proposal is Empty as a topology artefact rather than a node defect. Example:
+#   operator_pairs: [[0, 1, 2, 3], [1], [2], [3]]
+operator_pairs:
+  - [0]
+  - [1]
+  - [2]
+  - [3]
+
+nodes:
+  ssv:
+    count: 4
+  anchor:
+    count: 0
+
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v1.2.0"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  deployer: "localssv/ssv-network"
