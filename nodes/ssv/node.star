@@ -101,8 +101,11 @@ def get_service_config(index, config_artifact, image, enable_traces = False):
         # ("Build binary:", "Config path:", "Share config path:", "Command provided:", "Running
         # node on address:") to stdout before exec'ing ssvnode, whose own logger then switches to
         # JSON. Kurtosis's log stream is broken by even one non-JSON line for the whole service —
-        # that is what made `scout.py --env mini logs query` and `kurtosis service logs` unusable
-        # for every ssv-node, independent of the traces fix above. This mirrors exactly what the
+        # that was one of the causes that made `scout.py --env mini logs query` and `kurtosis
+        # service logs` unusable for every ssv-node, independent of the traces fix above. A third,
+        # still-open cause (Kurtosis's own log-collection engine cannot read the resulting
+        # per-line JSON) remains — see README.md's "Reading ssv-node logs on `--env mini`". This
+        # mirrors exactly what the
         # Makefile target itself does (see its line 129, `${BUILD_PATH} start-node
         # ${NODE_COMMAND_ARGS}`, and the "Command provided:" line's own `--config=...` shape) minus
         # the plain-text preamble. Cost: the Makefile target also supported `SHARE_CONFIG`
