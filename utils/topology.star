@@ -114,3 +114,71 @@ def _example(operator_count):
     for i in range(operator_count):
         lines.append("  - [{}]".format(i))
     return "\n".join(lines)
+
+def build(plan, args, all_participants):
+    """Resolve the operator -> pair map against the live ethereum-package participants."""
+    pair_labels = []
+    for p in all_participants:
+        pair_labels.append("{} / {}".format(
+            p.cl_context.beacon_service_name, p.el_context.service_name))
+
+    operator_count = args["nodes"]["anchor"]["count"] + args["nodes"]["ssv"]["count"]
+    if operator_count == 0:
+        fail("no operators configured: nodes.anchor.count and nodes.ssv.count are both 0")
+
+    r = resolve(args.get("operator_pairs", None), operator_count, pair_labels)
+
+    operators = []
+    for op in range(operator_count):
+        cl_urls = []
+        el_rpc_urls = []
+        el_ws_urls = []
+        for idx in r.pairs[op]:
+            p = all_participants[idx]
+            cl_urls.append("http://{}:{}".format(
+                p.cl_context.ip_addr, p.cl_context.http_port))
+            el_rpc_urls.append("http://{}:{}".format(
+                p.el_context.ip_addr, p.el_context.rpc_port_num))
+            el_ws_urls.append("ws://{}:{}".format(
+                p.el_context.ip_addr, p.el_context.ws_port_num))
+        operators.append(struct(
+            index = op,
+            pairs = r.pairs[op],
+            cl_urls = cl_urls,
+            el_rpc_urls = el_rpc_urls,
+            el_ws_urls = el_ws_urls,
+        ))
+
+    # infra is pair 0 and is deliberately a separate field, not operators[0]. The contract
+    # deploy, the two block-height gates, the keysplit, the validator registration and the
+    # monitor are enclave-level singletons, not any operator's view of the chain. They are
+    # the same thing today and will not be after this change, so the names must differ.
+    first = all_participants[0]
+    infra = struct(
+        cl_url = "http://{}:{}".format(first.cl_context.ip_addr, first.cl_context.http_port),
+        el_rpc = "http://{}:{}".format(first.el_context.ip_addr, first.el_context.rpc_port_num),
+        el_ws = "ws://{}:{}".format(first.el_context.ip_addr, first.el_context.ws_port_num),
+        cl_service = first.cl_context.beacon_service_name,
+        el_service = first.el_context.service_name,
+    )
+
+    _print_topology(plan, operators, pair_labels, r.warnings)
+
+    return struct(pair_count = len(pair_labels), operators = operators, infra = infra)
+
+def _print_topology(plan, operators, pair_labels, warnings):
+    # Printed at bring-up on purpose. "Which beacon node was operator N actually on?" has
+    # had to be reconstructed after the fact more than once; this line answers it in the run
+    # log, and it makes the 0-based-pair vs 1-based-service-name off-by-one visible now
+    # rather than during analysis.
+    lines = ["operator topology ({} operators, {} pairs):".format(
+        len(operators), len(pair_labels))]
+    for op in operators:
+        extra = ""
+        if len(op.pairs) > 1:
+            extra = " (+{} fallback)".format(len(op.pairs) - 1)
+        lines.append("  op{} -> pairs {}  {}{}".format(
+            op.index, op.pairs, pair_labels[op.pairs[0]], extra))
+    plan.print("\n".join(lines))
+    for w in warnings:
+        plan.print("WARNING: {}".format(w))
