@@ -8,8 +8,13 @@
 # operator's BN must not touch the others. Default topology is 4 x Lodestar (client diversity is a
 # different, orthogonal goal — see the commented-out diversity variant in network.participants).
 #
-# params-gloas.yaml remains the shared-CL baseline (one BN for all operators) for M1/M6
-# comparability — do not fold this profile back into it.
+# params-gloas.yaml remains the shared-CL baseline (one BN for all operators) and STAYS THAT WAY
+# PERMANENTLY — decided 2026-09-08, recorded as errata #125 in ssv-scout. Do not fold this profile
+# back into it, and do not "finish the migration" later: there is no migration. Per-operator
+# topologies are ADDITIVE — add another profile file when a scenario needs a different one. Keeping
+# the default profile single-shared-CL is what keeps the M1/M6 baseline comparable across builds, so
+# no past verdict is invalidated by a topology change, and it keeps per-operator BNs from ever
+# counting as a CL bump under P0.14 (which would re-trigger the TRN-13 gate).
 
 network:
   participants:
