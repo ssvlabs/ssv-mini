@@ -107,10 +107,41 @@ Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
 - `params-boole.yaml` — Alan→Boole fork transitions; needs `SSV_COMMIT=integration/boole-convergence make prepare`
 - `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
+- `params-gloas-multibn.yaml` — same Gloas transition, but each operator gets its own beacon/execution node pair instead of sharing one (see `operator_pairs` below); needs the same `SSV_COMMIT=epbs-gloas make prepare`
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml
 ```
+
+### Per-operator beacon and execution nodes (`operator_pairs`)
+
+By default every SSV and Anchor operator shares one beacon node and one execution node.
+`operator_pairs` maps each operator onto its own CL/EL pair.
+
+```yaml
+operator_pairs:
+  - [0]           # op0: pair 0 only
+  - [1]           # op1: pair 1 only
+  - [2, 0, 1, 3]  # op2: pair 2 primary, then 0, 1, 3 as failover
+  - [3]           # op3: pair 3 only
+```
+
+- The index is the **global operator index**: Anchor nodes come first, then SSV nodes.
+- A pair index selects one `network.participants` entry — its CL **and** its EL.
+- Pair indices are **0-based**; the kurtosis service names are **1-based** (`pair 0` is
+  `cl-1-...`).
+- Omit the key entirely and every operator goes to pair 0, which is the historical behaviour.
+- The archive exporter is not an operator and needs no entry.
+- go-SSV receives the list `;`-joined (`BeaconNodeAddr`, `ETH1Addr`); Anchor receives it
+  `,`-joined (`--beacon-nodes`, `--execution-rpc`) and takes only the primary for
+  `--execution-ws`.
+
+**Validator budget.** Every participant group runs its own validator client, and
+`main.star` fails the run if `validator_count × count` summed across all groups exceeds 64
+— indices 64-73 belong to the aetheria seed, and an overlap would make the VCs and the SSV
+operators sign with the same keys. With four pairs use `validator_count: 16` each.
+
+Run the validation suite for this map with `make test-topology`.
 
 ## Architecture
 
