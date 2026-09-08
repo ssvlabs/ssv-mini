@@ -260,6 +260,7 @@ help:
 	@echo ""
 	@echo "Tests:"
 	@echo "  make test-faulty-el  Bloom filter cross-check test (needs bloom-check SSV)"
+	@echo "  make test-topology                       Run the operator_pairs validation suite"
 
 # ── Network scenarios ────────────────────────────────────────────────
 
@@ -286,3 +287,7 @@ run-gloas:
 .PHONY: test-faulty-el
 test-faulty-el:
 	@./tests/faulty-el/run-test.sh
+
+.PHONY: test-topology
+test-topology:
+	@./tests/topology/run-tests.sh
