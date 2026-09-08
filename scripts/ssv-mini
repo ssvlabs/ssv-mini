@@ -161,7 +161,15 @@ cmd_stop() {
 
 cmd_logs() {
     local node="${1:-0}"
-    kurtosis service logs -f "$ENCLAVE_NAME" "ssv-node-$node"
+    # `kurtosis service logs` cannot read an ssv-node's JSON output (see ssv-mini's README.md
+    # "Reading ssv-node logs on `--env mini`"); `docker logs` is the only working read path.
+    local container
+    container=$(docker ps --filter "label=kurtosis_service_name=ssv-node-$node" --format '{{.Names}}')
+    if [ -z "$container" ]; then
+        echo "Error: no running container for ssv-node-$node in enclave $ENCLAVE_NAME."
+        exit 1
+    fi
+    docker logs -f "$container"
 }
 
 cmd_default() {
