@@ -3,6 +3,9 @@ PARAMS_FILE?=params.yaml
 SSV_NODE_COUNT?=4
 SSV_COMMIT?=stage
 ANCHOR_COMMIT?=unstable
+FAULT_LOG_DIR?=.fault-logs
+SSV_REPO?=../ssv
+FAULT_BANNER_TIMEOUT?=180
 # Minimum free disk (GiB) in the Docker VM before a run. Geth self-terminates below its
 # ~1.62GiB low-disk safety threshold, which freezes the chain mid-run (EL gone → CL gets no
 # payloads). Guarded with headroom by check-deps; override for tiny/large runs.
@@ -211,6 +214,85 @@ start-el:
 	kurtosis service start $(ENCLAVE_NAME) $(EL_SERVICE)
 	@echo "$(EL_SERVICE) started."
 
+# ── M3 fault menu ────────────────────────────────────────────────────
+# The instrumented node reads FAULT once at boot, so switching a fault means a
+# `kurtosis service update`, which re-creates the container and destroys its log buffer. These
+# targets therefore ARCHIVE the operator's logs first, then switch, then verify that the node came
+# back reporting the fault that was asked for. A switch that silently did not apply looks exactly
+# like a fault that fired and was correctly ignored — the one failure a test pass cannot detect
+# from the honest side. See qa/FAULTS.md on the ssv branch qa/gloas-m3-fault-menu.
+
+.PHONY: fault-list
+fault-list:
+	@cd $(SSV_REPO) && go run ./qa/faults/cmd/list
+
+.PHONY: fault
+fault:
+	@test -n "$(FAULT)" || { echo "Error: FAULT is required, e.g. make fault FAULT=vote-index-2 OP=5. Values: make fault-list"; exit 1; }
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make fault FAULT=$(FAULT) OP=5"; exit 1; }
+	@cd $(SSV_REPO) && go run ./qa/faults/cmd/list | grep -qx "$(FAULT)" || \
+		{ echo "Error: '$(FAULT)' is not in the menu. Values: make fault-list"; exit 1; }
+	@mkdir -p $(FAULT_LOG_DIR)
+	@ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
+	CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
+	docker logs "$$CONTAINER" > "$$ARCHIVE" 2>&1 || true; \
+	if [ ! -s "$$ARCHIVE" ]; then \
+		if [ -n "$(ALLOW_EMPTY_ARCHIVE)" ]; then \
+			echo "  warning: archive is empty, continuing because ALLOW_EMPTY_ARCHIVE is set"; \
+		else \
+			echo "Error: the archive is empty, so the switch was NOT applied — it would destroy the"; \
+			echo "       operator's log buffer with no copy kept."; \
+			echo "       Usual cause: the container is gone or docker is unreachable. If the enclave is wedged:"; \
+			echo "         kurtosis clean -a && docker rm -f kurtosis-logs-aggregator && kurtosis engine restart"; \
+			echo "       If the operator genuinely has no logs worth keeping: ALLOW_EMPTY_ARCHIVE=1 make fault FAULT=$(FAULT) OP=$(OP)"; \
+			exit 1; \
+		fi; \
+	fi; \
+	echo "──── Switching ssv-node-$(OP) to FAULT=$(FAULT) ────"; \
+	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
+		--env FAULT=$(FAULT) \
+		--files "/ssv-config:ssv-config-$(OP).yaml"; \
+	echo "──── Waiting for the boot banner (up to $(FAULT_BANNER_TIMEOUT)s) ────"; \
+	DEADLINE=$$(( $$(date +%s) + $(FAULT_BANNER_TIMEOUT) )); \
+	while [ "$$(date +%s)" -lt "$$DEADLINE" ]; do \
+		if docker logs "$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--")" 2>&1 | grep -q '"qa_fault":[[:space:]]*"$(FAULT)"'; then \
+			echo "──── ssv-node-$(OP) is running FAULT=$(FAULT) ────"; exit 0; \
+		fi; \
+		sleep 3; \
+	done; \
+	echo "Error: ssv-node-$(OP) did not report FAULT=$(FAULT) within $(FAULT_BANNER_TIMEOUT)s."; \
+	echo "       Check: docker logs \$$(docker ps --format '{{.Names}}' | grep -m1 \"^ssv-node-$(OP)--\") | tail -40"; \
+	echo "       An unknown value aborts the node's startup by design; a dropped config mount does too."; \
+	echo "       The pre-switch logs are in $$ARCHIVE."; \
+	exit 1
+
+.PHONY: fault-off
+fault-off:
+	@test -n "$(OP)" || { echo "Error: OP is required, e.g. make fault-off OP=5"; exit 1; }
+	@mkdir -p $(FAULT_LOG_DIR)
+	@ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
+	CONTAINER=$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--"); \
+	docker logs "$$CONTAINER" > "$$ARCHIVE" 2>&1 || true; \
+	echo "──── Clearing the fault on ssv-node-$(OP) ────"; \
+	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
+		--env FAULT=none \
+		--files "/ssv-config:ssv-config-$(OP).yaml"; \
+	DEADLINE=$$(( $$(date +%s) + $(FAULT_BANNER_TIMEOUT) )); \
+	while [ "$$(date +%s)" -lt "$$DEADLINE" ]; do \
+		if docker logs "$$(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-$(OP)--")" 2>&1 | grep -q "no fault active"; then \
+			echo "──── ssv-node-$(OP) has no fault active ────"; exit 0; \
+		fi; \
+		sleep 3; \
+	done; \
+	echo "Error: ssv-node-$(OP) did not report 'no fault active' within $(FAULT_BANNER_TIMEOUT)s"; \
+	exit 1
+
+.PHONY: test-fault-switch
+test-fault-switch:
+	@./tests/fault-switch/run-test.sh
+
 # ── Static key generation ────────────────────────────────────────────
 
 .PHONY: generate-keys
@@ -251,6 +333,12 @@ help:
 	@echo "  make stop-el                             Stop EL (simulate crash)"
 	@echo "  make start-el                            Restart stopped EL"
 	@echo "  EL_SERVICE=el-2-geth-lighthouse make stop-el   Target specific EL"
+	@echo ""
+	@echo "Fault injection (M3, SSV node):"
+	@echo "  make fault-list                           List available FAULT values"
+	@echo "  make fault FAULT=vote-index-2 OP=3         Archive OP's logs, switch its fault, verify banner"
+	@echo "  make fault-off OP=3                        Archive OP's logs, clear its fault, verify banner"
+	@echo "  make test-fault-switch OP=3                Run the fault-switch integration test"
 	@echo ""
 	@echo "Image building:"
 	@echo "  make prepare         Build SSV image (default: stage branch)"
