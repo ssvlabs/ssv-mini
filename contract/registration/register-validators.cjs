@@ -43,6 +43,10 @@ async function main() {
   const perValidator = ethers.parseEther("2.5");
   let cluster = { validatorCount: 0, networkFeeIndex: 0, index: 0, active: true, balance: 0 };
 
+  // Cap the buffered gasLimit below the block gas limit: the 2x buffer on a full batch's estimate can
+  // exceed the block ceiling, which bounces the tx with "exceeds block gas limit". 90% leaves headroom.
+  const gasCap = ((await provider.getBlock("latest")).gasLimit * 9n) / 10n;
+
   for (let i = 0; i < shares.length; i += BATCH_SIZE) {
     const batch = shares.slice(i, i + BATCH_SIZE);
     const publicKeys = batch.map((s) => s.payload.publicKey);
@@ -50,9 +54,12 @@ async function main() {
     const value = perValidator * BigInt(batch.length);
     // geth's eth_estimateGas runs the lenient eth_call path and under-counts this nested call — real
     // execution forwards only 63/64 of the remaining gas (EIP-150) into the SSVStaking delegatecall, so
-    // sending with exactly the estimate starves the subcall into a bare revert. Send with a 2x buffer.
+    // sending with exactly the estimate starves the subcall into a bare revert. Send with a 2x buffer,
+    // capped at gasCap so the doubled estimate stays under the block gas limit.
     const gasEstimate = await ssv.bulkRegisterValidator.estimateGas(publicKeys, operatorIds, sharesData, cluster, { value });
-    const receipt = await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value, gasLimit: gasEstimate * 2n })).wait();
+    const buffered = gasEstimate * 2n;
+    const gasLimit = buffered < gasCap ? buffered : gasCap;
+    const receipt = await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value, gasLimit })).wait();
     cluster = clusterFromReceipt(ssv, receipt);
     console.log("  Registered " + (i + batch.length) + "/" + shares.length + " validator(s)");
   }

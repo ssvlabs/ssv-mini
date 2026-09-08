@@ -135,8 +135,9 @@ docker run --rm --entrypoint="" \
 
 # Step 4: sync the layout mirrors so main.star's guard + the params match the keyshares just generated.
 # SSV_SEED_START_INDEX = the VC total (CL_VALIDATOR_START); the pool follows it; preregistered covers both.
-# The VC cohort itself (params validator_count*count) must be set to CL_VALIDATOR_START separately — it's
-# per-network, so only the scaled params file (params-gloas.yaml for pool-scale) should carry the big VC.
+# The VC cohort itself (params validator_count*count) is set separately (per-network) and must EQUAL
+# CL_VALIDATOR_START — only params-gloas.yaml carries the big VC, and main.star's guard fails the run
+# if it drifts.
 echo ""
 echo "Step 4/4: Syncing layout mirrors (VC start=$CL_VALIDATOR_START, SSV pool=$SSV_VALIDATOR_COUNT)..."
 PREREGISTERED=$((CL_VALIDATOR_START + SSV_VALIDATOR_COUNT))

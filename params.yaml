@@ -31,7 +31,7 @@ network:
     # validators the SSV operators adopt (ssvlabs/aetheria orchestrator/script/insert_test_data.sql),
     # N = the SSV pool size (utils/constants.star SSV_MANAGED_VALIDATOR_COUNT). VCs run
     # [0, total validator_count*count summed over all participant groups) = [0,64); genesis deposits
-    # [0, preregistered). Keep that VC total <= 64 and preregistered_validator_count >= 64+N (main.star
+    # [0, preregistered). Keep that VC total == 64 (exactly) and preregistered_validator_count >= 64+N (main.star
     # asserts this by default; unsafe_skip_validator_layout_guard in params-gloas.yaml opts out for
     # standalone liveness probes), else operators would run VC-active validators -> double-sign ->
     # slashing. generate-static-keys.sh Step 4 keeps this in sync with N.
