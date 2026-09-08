@@ -105,7 +105,11 @@ def get_service_config(index, config_artifact, image, enable_traces = False):
         # for every ssv-node, independent of the traces fix above. This mirrors exactly what the
         # Makefile target itself does (see its line 129, `${BUILD_PATH} start-node
         # ${NODE_COMMAND_ARGS}`, and the "Command provided:" line's own `--config=...` shape) minus
-        # the plain-text preamble.
+        # the plain-text preamble. Cost: the Makefile target also supported `SHARE_CONFIG`
+        # (appended as `--share-config=...`) and `DEBUG_PORT` (routed through `dlv` instead of
+        # exec'ing the binary directly) — neither is set anywhere in ssv-mini today, but bypassing
+        # `make` means neither is supported here either. If ssv-mini ever wires either one up, add
+        # it to this entrypoint list explicitly; it will not come back for free.
         entrypoint=[
             "/go/bin/ssvnode",
             "start-node",

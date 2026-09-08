@@ -84,6 +84,8 @@ monitor:
 nodes:
   ssv:
     count: 4      # Valid total (ssv+anchor): 4, 7, 10, 13 (3f+1 for BFT)
+    # enable_traces: false   # OTLP traces are opt-in; needs a collector reachable at
+                             # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, which no profile here provides
   anchor:
     count: 0
 
