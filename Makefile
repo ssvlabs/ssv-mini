@@ -162,6 +162,12 @@ prepare-monitor:
 .PHONY: prepare-all
 prepare-all: prepare-ssv prepare-anchor prepare-monitor
 
+.PHONY: prepare-blindspot-proxy
+prepare-blindspot-proxy:
+	@echo "Building blindspot-proxy image..."
+	@docker build -t blindspot-proxy tests/blindspot-proxy
+	@echo "Done."
+
 # ── Fault injection (EL node management) ─────────────────────────────
 
 EL_SERVICE?=el-1-geth-lighthouse
@@ -243,6 +249,7 @@ help:
 	@echo "  make prepare-anchor  Build Anchor image (default: unstable)"
 	@echo "  make prepare-monitor Build Monitor image"
 	@echo "  make prepare-all     Build all images"
+	@echo "  make prepare-blindspot-proxy             Build the fork blind-spot proxy image"
 	@echo ""
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu at genesis"
