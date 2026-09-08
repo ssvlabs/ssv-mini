@@ -79,6 +79,14 @@ make help
 
 Use `EL_SERVICE=el-2-geth-lighthouse` to target the second EL node.
 
+### Switching an M3 fault
+
+A fault switch is a `kurtosis service update`, which re-creates the container: the node's buffered
+logs are lost and it resyncs before it takes part in duties again. Measured on a 4-node Gloas
+enclave on 2026-09-08: **7 s** from the update to the boot banner, **1 slot** until the
+operator injected its first fault. `make fault` archives the logs before switching for exactly this
+reason. A `kurtosis service stop` + `start` **does** preserve the container filesystem.
+
 ## Configuration
 
 Edit `params.yaml` to customize the network:
