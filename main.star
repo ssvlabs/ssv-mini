@@ -5,6 +5,7 @@ ssv_node = import_module("./nodes/ssv/node.star")
 anchor_node = import_module("./nodes/anchor/node.star")
 blocks = import_module("./blockchain/blocks.star")
 utils = import_module("./utils/utils.star")
+topo = import_module("./utils/topology.star")
 deployer = import_module("./contract/deployer.star")
 interactions = import_module("./contract/interactions.star")
 operator_keygen = import_module("./generators/operator-keygen.star")
@@ -74,13 +75,13 @@ def run(plan, args):
             fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices 64-73 (must be deposited AND VC-idle) - keep total validator_count*count <= 64 and preregistered_validator_count >= 74, or update the aetheria seed. For a standalone base-chain liveness probe with no SSV validators (ssvlabs/ssv-mini#38), set unsafe_skip_validator_layout_guard: true.".format(vc_validators, deposited_validators))
     ethereum_network = ethereum_package.run(plan, network_args)
 
-    cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
+    topology = topo.build(plan, args, ethereum_network.all_participants)
 
-    blocks.wait_until_node_reached_block(plan, el_service_name, 1)
+    blocks.wait_until_node_reached_block(plan, topology.infra.el_service, 1)
 
     # ── Step 2: Deploy SSV smart contracts ──
     plan.print("Step 2/5: Deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
+    deployer.deploy(plan, topology.infra.el_rpc, genesis_constants, deployer_image_spec)
 
     # ── Step 3: Prepare operator keys and keyshares ──
     use_static_keys = args.get("use_static_keys", True)
@@ -137,7 +138,7 @@ def run(plan, args):
             operator_data_artifact,
             constants.SSV_NETWORK_PROXY_CONTRACT,
             constants.OWNER_ADDRESS,
-            el_rpc,
+            topology.infra.el_rpc,
             args
         )
         plan.remove_service(constants.ANCHOR_KEYSPLIT_SERVICE, description="Cleaning up keysplit service")
@@ -161,7 +162,7 @@ def run(plan, args):
             plan,
             keyshare_artifact,
             constants.SSV_NETWORK_PROXY_CONTRACT,
-            el_rpc,
+            topology.infra.el_rpc,
             genesis_constants,
             args,
         )
@@ -176,7 +177,7 @@ def run(plan, args):
     if anchor_node_count > 0:
         plan.print("Step 5/5: Starting {} Anchor + {} SSV nodes".format(anchor_node_count, ssv_node_count))
         config = utils.anchor_testnet_artifact(plan, args)
-        enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config, anchor_image)
+        enr = anchor_node.start(plan, anchor_node_count, topology.infra.cl_url, topology.infra.el_rpc, topology.infra.el_ws, pem_artifacts, config, anchor_image)
     else:
         plan.print("Step 5/5: Starting {} SSV nodes".format(ssv_node_count))
 
@@ -185,12 +186,12 @@ def run(plan, args):
     ssv_node_api_url = None
 
     if ssv_node_count > 0:
-        blocks.wait_until_node_reached_block(plan, el_service_name, 16)
+        blocks.wait_until_node_reached_block(plan, topology.infra.el_service, 16)
 
         ssv_configs = {}
         for _ in range(0, ssv_node_count):
             is_exporter = False
-            config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr, is_exporter, args)
+            config = ssv_node.generate_config(plan, node_index, topology.infra.cl_url, topology.infra.el_ws, private_keys[node_index], enr, is_exporter, args)
             service_name = "ssv-node-{}".format(node_index)
             ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image)
             node_index += 1
@@ -201,7 +202,7 @@ def run(plan, args):
         # Singular by design (the aetheria side pins the hostname `ssv-exporter`), hence a bool, not a count.
         exporter_enabled = args["nodes"].get("exporter", {}).get("enabled", False)
         if exporter_enabled:
-            exporter_config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, "", enr, True, args)
+            exporter_config = ssv_node.generate_config(plan, node_index, topology.infra.cl_url, topology.infra.el_ws, "", enr, True, args)
             ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, ssv_image)
 
         ssv_services = plan.add_services(
@@ -220,4 +221,4 @@ def run(plan, args):
             return
 
         plan.print("Launching monitor stack")
-        monitor.start(plan, ssv_node_api_url, cl_url, monitor_image, postgres_image, redis_image)
+        monitor.start(plan, ssv_node_api_url, topology.infra.cl_url, monitor_image, postgres_image, redis_image)
