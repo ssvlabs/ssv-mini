@@ -98,6 +98,16 @@ explicitly that the container has already been replaced — treat that as a veri
 check by hand, not proof the switch itself failed. `make fault-off OP=5` runs the same
 archive-then-verify sequence with `FAULT=none`.
 
+Operator 4's gas limit for PRF-04 and PRF-11 needs the same env-var mechanism, set by hand:
+`ExperimentalGasLimit` / env `EXPERIMENTAL_GAS_LIMIT` (`operator/validator/controller.go:99` in
+`ssv`). `ssv-mini` has no params key for it — either add the env var to a local copy of
+`nodes/ssv/node.star`'s `env_vars` before `make run`, or set it after bring-up with `kurtosis
+service update --env`. **`--env` replaces the whole variable list, not just the named key** —
+before using the second route, read the operator's current env first (`kurtosis service inspect`)
+and re-declare every existing pair alongside the new one, or the update silently drops `FAULT` and
+everything else. See `scenarios/gloas/PRF-04.md`'s "Preconditions and setup" for both routes in
+full and `scenarios/gloas/PRF-11.md` for why the value matters.
+
 A fault switch is a `kurtosis service update`, which re-creates the container: the node's buffered
 logs are lost and it resyncs before it takes part in duties again. Measured on a 4-node Gloas
 enclave on 2026-09-08: **7 s** from the update to the boot banner, **1 slot** until the
