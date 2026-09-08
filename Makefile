@@ -113,10 +113,29 @@ ssv-mini-down:
 
 SERVICE?=ssv-node-0
 .PHONY: logs
+# `kurtosis service logs` cannot read an ssv-node's JSON output (see README.md's "Reading ssv-node
+# logs on `--env mini`"), so for ssv-node-* this shells out to `docker logs` directly instead —
+# the only working read path for this service. Every other service still goes through kurtosis.
 logs:
-	kurtosis service logs -f $(ENCLAVE_NAME) $(SERVICE)
+	@case "$(SERVICE)" in \
+		ssv-node-*) \
+			OP=$$(echo "$(SERVICE)" | sed 's/^ssv-node-//'); \
+			ENCLAVE_UUID=$$(kurtosis enclave inspect $(ENCLAVE_NAME) --full-uuids 2>/dev/null | awk '/^UUID:/{print $$2}'); \
+			CONTAINER=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$$OP" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}}'); \
+			if [ -z "$$CONTAINER" ]; then \
+				echo "Error: no running container for ssv-node-$$OP in enclave $(ENCLAVE_NAME)."; \
+				exit 1; \
+			fi; \
+			docker logs -f "$$CONTAINER" ;; \
+		*) \
+			kurtosis service logs -f $(ENCLAVE_NAME) $(SERVICE) ;; \
+	esac
 
 .PHONY: restart-ssv-nodes
+# WARNING: this is a bare `kurtosis service update` over every node — unlike `make fault`/
+# `fault-off`, it does NOT archive first. It destroys every operator's buffered log evidence,
+# including the honest operators an M3 oracle reads. Do not run it mid-scenario; if you need it
+# after that point, archive first by hand (see `make fault`'s ARCHIVE step for the pattern).
 restart-ssv-nodes:
 	@echo "Restarting $(SSV_NODE_COUNT) SSV nodes..."
 	@i=0; while [ "$$i" -lt "$(SSV_NODE_COUNT)" ]; do \
