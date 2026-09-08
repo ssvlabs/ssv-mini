@@ -115,6 +115,76 @@ def _example(operator_count):
         lines.append("  - [{}]".format(i))
     return "\n".join(lines)
 
+BLINDSPOT_PORT = 4000
+
+def _start_blindspot_proxies(plan, args, all_participants):
+    """Start one spec-rewriting proxy per blindspot_pairs entry.
+
+    Each returns a synthetic "pair" whose CL is the proxy and whose EL is the upstream
+    pair's EL untouched - the proxy sits on the CL path only.
+    """
+    entries = args.get("blindspot_pairs", [])
+    if type(entries) != "list":
+        fail("blindspot_pairs must be a list of {upstream: <pair index>, strip: [<spec key>]}")
+
+    extra = []
+    for i in range(len(entries)):
+        e = entries[i]
+        upstream_idx = e.get("upstream", None)
+        if type(upstream_idx) != "int":
+            fail("blindspot_pairs[{}].upstream must be an integer pair index".format(i))
+        if upstream_idx < 0 or upstream_idx >= len(all_participants):
+            fail("blindspot_pairs[{}].upstream = {} is not a real pair (valid 0-{}). ".format(
+                i, upstream_idx, len(all_participants) - 1) +
+                 "A blind-spot pair must proxy an actual participant, not another proxy.")
+        strip = e.get("strip", ["GLOAS_FORK_EPOCH"])
+        if type(strip) != "list" or len(strip) == 0:
+            fail("blindspot_pairs[{}].strip must be a non-empty list of spec keys".format(i))
+
+        up = all_participants[upstream_idx]
+        name = "blindspot-proxy-{}".format(i)
+        svc = plan.add_service(
+            name = name,
+            description = "Starting {} in front of {}".format(
+                name, up.cl_context.beacon_service_name),
+            config = ServiceConfig(
+                image = "blindspot-proxy",
+                env_vars = {
+                    "UPSTREAM": "http://{}:{}".format(
+                        up.cl_context.ip_addr, up.cl_context.http_port),
+                    "STRIP": ",".join(strip),
+                    "LISTEN_PORT": str(BLINDSPOT_PORT),
+                },
+                ports = {
+                    "http": PortSpec(
+                        number = BLINDSPOT_PORT,
+                        transport_protocol = "TCP",
+                        application_protocol = "http",
+                    ),
+                },
+            ),
+        )
+        extra.append(struct(
+            label = "{} -> {} (strip {})".format(
+                name, up.cl_context.beacon_service_name, ",".join(strip)),
+            cl_url = "http://{}:{}".format(svc.ip_address, BLINDSPOT_PORT),
+            el_rpc = "http://{}:{}".format(up.el_context.ip_addr, up.el_context.rpc_port_num),
+            el_ws = "ws://{}:{}".format(up.el_context.ip_addr, up.el_context.ws_port_num),
+        ))
+    return extra
+
+def _endpoints_for(all_participants, blindspots, idx):
+    """Resolve a pair index across real participants and appended blind-spot pairs."""
+    if idx < len(all_participants):
+        p = all_participants[idx]
+        return struct(
+            cl_url = "http://{}:{}".format(p.cl_context.ip_addr, p.cl_context.http_port),
+            el_rpc = "http://{}:{}".format(p.el_context.ip_addr, p.el_context.rpc_port_num),
+            el_ws = "ws://{}:{}".format(p.el_context.ip_addr, p.el_context.ws_port_num),
+        )
+    b = blindspots[idx - len(all_participants)]
+    return struct(cl_url = b.cl_url, el_rpc = b.el_rpc, el_ws = b.el_ws)
+
 def build(plan, args, all_participants):
     """Resolve the operator -> pair map against the live ethereum-package participants."""
     pair_labels = []
@@ -126,6 +196,10 @@ def build(plan, args, all_participants):
     if operator_count == 0:
         fail("no operators configured: nodes.anchor.count and nodes.ssv.count are both 0")
 
+    blindspots = _start_blindspot_proxies(plan, args, all_participants)
+    for b in blindspots:
+        pair_labels.append(b.label)
+
     r = resolve(args.get("operator_pairs", None), operator_count, pair_labels)
 
     operators = []
@@ -134,13 +208,10 @@ def build(plan, args, all_participants):
         el_rpc_urls = []
         el_ws_urls = []
         for idx in r.pairs[op]:
-            p = all_participants[idx]
-            cl_urls.append("http://{}:{}".format(
-                p.cl_context.ip_addr, p.cl_context.http_port))
-            el_rpc_urls.append("http://{}:{}".format(
-                p.el_context.ip_addr, p.el_context.rpc_port_num))
-            el_ws_urls.append("ws://{}:{}".format(
-                p.el_context.ip_addr, p.el_context.ws_port_num))
+            ep = _endpoints_for(all_participants, blindspots, idx)
+            cl_urls.append(ep.cl_url)
+            el_rpc_urls.append(ep.el_rpc)
+            el_ws_urls.append(ep.el_ws)
         operators.append(struct(
             index = op,
             pairs = r.pairs[op],

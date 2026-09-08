@@ -172,3 +172,28 @@ images:
   redis: "redis:7.4.2"
   postgres: "postgres:15"
   deployer: "localssv/ssv-network"
+
+# ── FORK BLIND SPOT (TRN-04, TRN-05) ──
+# Each entry starts a proxy in front of an existing pair's CL and appends a NEW pair index
+# after the real participants. With the four pairs above, this creates pair 4:
+#
+#   blindspot_pairs:
+#     - upstream: 3
+#       strip: [GLOAS_FORK_EPOCH]
+#   operator_pairs: [[0], [1], [2], [4]]
+#
+# op3 then sees a beacon node with no Gloas fork scheduled and must log the Debug line
+# "Gloas (ePBS) fork not scheduled by the beacon node" while the others fork normally.
+#
+# The proxy DELETES the key; it never rewrites it to a far-future value. A far-future value
+# makes the node log the INFO "fork scheduled" line instead, which inverts TRN-04's oracle -
+# the alert watches for the MISSING Info line.
+#
+# TRN-05 (the BN gets the schedule after the SSV boot) is then one call, with the SSV node
+# still running and its BN URL unchanged:
+#   kurtosis service exec localnet blindspot-proxy-0 \
+#     "wget -qO- --post-data=on http://127.0.0.1:4000/_qa/passthrough"
+#
+# Requires: make prepare-blindspot-proxy
+# Limits: CL path only (the EL is the upstream pair's, untouched), and it adds a network hop -
+# never route timing or fault-injection scenarios through it.
