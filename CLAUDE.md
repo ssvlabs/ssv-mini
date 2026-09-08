@@ -129,13 +129,24 @@ curl -s -X POST -H "Content-Type: application/json" \
 
 ## M3 Fault Injection
 
+- **Prerequisite**: the enclave's SSV image must be the instrumented build — `node/ssv-fault`,
+  built from the ssv branch `qa/gloas-m3-fault-menu` — and `$SSV_REPO` (default `../ssv`) must be
+  checked out on that same branch, because `make fault-list`/`make fault` enumerate the menu from
+  it (`go run ./qa/faults/cmd/list`). On a stock node `FAULT` is silently ignored, so a missed
+  prerequisite shows up as the boot-banner timeout below, not a clear setup error.
 - Switch a fault with `make fault FAULT=<value> OP=<n>` (`make fault-off OP=<n>` to clear it) —
   never a bare `kurtosis service update`. `make fault` archives the operator's logs first (the
   switch destroys them) and verifies the node reports the requested fault before returning; a bare
   `service update` skips both, and a switch that silently didn't apply looks identical to a fault
   that fired and was correctly ignored — the one failure a test pass cannot detect otherwise.
 - `FAULT` is read once at boot. There is no warm switch — every fault change recreates the
-  container (~7 s to the boot banner, ~1 slot to the first injected fault).
+  container (~7 s to the boot banner, ~1 slot to the first injected fault). `nodes.ssv.enable_traces`
+  does not survive a switch (`--env FAULT=...` replaces the whole env-var list, dropping the OTEL
+  pair too).
+- **Never run `make restart-ssv-nodes` mid-scenario.** It is a bare, unarchived `kurtosis service
+  update` over every node — it destroys every operator's buffered log evidence, including the
+  honest operators an M3 oracle reads. Use it only between scenarios, after logs have already been
+  read.
 - `docker logs <container>` is the only working read path for `ssv-node` on `--env mini`.
   `scout.py --env mini logs query` returns nothing for this service here — a Kurtosis
   log-collection-engine limitation, not an `ssv-mini`/`ssv` defect (see README's "Reading ssv-node

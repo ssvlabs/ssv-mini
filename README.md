@@ -81,6 +81,13 @@ Use `EL_SERVICE=el-2-geth-lighthouse` to target the second EL node.
 
 ### Switching an M3 fault
 
+**Prerequisite:** the enclave's SSV image must be the instrumented build — `node/ssv-fault`, built
+from the ssv branch `qa/gloas-m3-fault-menu` (a distinct tag so `FAULT=none` operators can keep
+running the plain `node/ssv` image; see `qa/FAULTS.md` §10) — and `$SSV_REPO` (default `../ssv`)
+must be checked out on that same branch, because `make fault-list`/`make fault` enumerate the menu
+by running `go run ./qa/faults/cmd/list` in it. On a stock node `FAULT` is simply ignored, so a
+missed prerequisite does not error clearly — it shows up as the boot-banner timeout below.
+
 ```bash
 make fault-list                          # the 19 values
 make fault FAULT=vote-index-2 OP=5       # archive, switch, verify
@@ -89,13 +96,22 @@ make fault-off OP=5
 
 `make fault` rejects a value that is not in the menu **before** it touches the enclave, and fails
 fast if `OP`'s container cannot be resolved — in both cases nothing is archived and nothing is
-switched. Otherwise it archives the operator's buffered logs to `.fault-logs/` first, because the
-switch destroys them, and aborts if the archive holds no JSON log lines — pass
-`ALLOW_EMPTY_ARCHIVE=1` only when the operator genuinely has no logs worth keeping (`fault-off`
-never applies this check). It then fails non-zero unless the node comes back within
-`FAULT_BANNER_TIMEOUT` (default 180 s) reporting the requested fault; on that timeout it says
-explicitly that the container has already been replaced — treat that as a verification failure to
-check by hand, not proof the switch itself failed. `make fault-off OP=5` runs the same
+switched. Container resolution is by Kurtosis label (`kurtosis_service_name` /
+`kurtosis_enclave_uuid`), not by container name, so a co-tenant enclave running the same operator
+index cannot be picked by accident; a match count other than 1 is always an error. Otherwise it
+archives the operator's buffered logs to `.fault-logs/` first, because the switch destroys them,
+and aborts if the archive holds no JSON log lines — pass `ALLOW_EMPTY_ARCHIVE=1` only when the
+operator genuinely has no logs worth keeping (`fault-off` warns instead of aborting on this, since
+it runs at the end of a fault window and aborting would strand the operator faulted). The switch
+command's own exit status is checked — a failed `kurtosis service update` stops the recipe there,
+it does not fall through to verification against the still-running old container. It then fails
+non-zero unless the **newly-created** container comes back within `FAULT_BANNER_TIMEOUT` (default
+180 s) with a boot banner naming the requested fault (the poll re-resolves the container by label
+each iteration and skips while its ID still matches the pre-switch container, so a retried or
+same-value switch cannot be verified against the old container's buffer); on that timeout, do not
+record a verdict for this operator's window until its state is confirmed by hand — the most likely
+cause is that the enclave is not running the instrumented image (see the prerequisite above; on a
+stock node this timeout is exactly what you see). `make fault-off OP=5` runs the same
 archive-then-verify sequence with `FAULT=none`.
 
 Operator 4's gas limit for PRF-04 and PRF-11 needs the same env-var mechanism, set by hand:
@@ -120,7 +136,11 @@ reason. A `kurtosis service stop` + `start` **does** preserve the container file
 fixes it — **`docker logs <container>` is the only working read path.** Three causes were found:
 
 - Unconditional OTLP trace export to a collector no profile here creates — **fixed**, gated behind
-  `nodes.ssv.enable_traces` (default off, see `params.yaml`).
+  `nodes.ssv.enable_traces` (default off, see `params.yaml`). Note: `enable_traces` does not
+  survive a fault switch — `make fault`'s `--env FAULT=...` replaces the operator's whole env-var
+  list, dropping the OTEL pair too. The node still boots because commit `86f8750` moved
+  `--config=` into the entrypoint instead of depending on that `--env` list; reverting that change
+  would silently break every switch.
 - The container printing plain-text lines from the node's own Makefile target before its JSON
   logging started — **fixed**, by exec'ing the `ssvnode` binary directly instead of going through
   `make`.
@@ -133,7 +153,7 @@ Every M3 scenario-card oracle is written as a `scout.py --env mini logs query` c
 gains a `docker logs` fallback for `--env mini`, translate each one by hand, e.g.:
 
 ```bash
-docker logs $(docker ps --format '{{.Names}}' | grep -m1 "^ssv-node-5--") | grep '"qa_fault"'
+docker logs $(docker ps --filter label=kurtosis_service_name=ssv-node-5 --format '{{.Names}}') | grep '"qa_fault"'
 ```
 
 ## Configuration
