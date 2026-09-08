@@ -10,8 +10,7 @@ SSV_METRICS_PORT = 9240
 def generate_config(
         plan,
         index,
-        consensus_client,
-        execution_client,
+        endpoints,
         operator_private_key,
         enr,
         is_exporter,
@@ -29,8 +28,12 @@ def generate_config(
         LogLevel="debug",
         LogFormat="json",
         DBPath="./data/db/{}/".format(index),
-        BeaconNodeAddr=consensus_client,
-        ETH1Addr=execution_client,
+        # go-SSV takes multiple endpoints as a SEMICOLON-separated list:
+        # BeaconNodeAddr -> beacon/goclient/goclient.go:209, ETH1Addr -> cli/operator/node.go:123.
+        # Anchor uses commas for the same idea, which is why the join lives here in the
+        # client's own module rather than in topology.star.
+        BeaconNodeAddr=";".join(endpoints.cl_urls),
+        ETH1Addr=";".join(endpoints.el_ws_urls),
         Network="local-testnet", #if not set - default to "mainnet"
         NetworkName="testnet",  #relevant for interop with Anchor, otherwise getting mismatched subnets starting with Boole
         DomainType="0x00000000",

@@ -191,7 +191,7 @@ def run(plan, args):
         ssv_configs = {}
         for _ in range(0, ssv_node_count):
             is_exporter = False
-            config = ssv_node.generate_config(plan, node_index, topology.infra.cl_url, topology.infra.el_ws, private_keys[node_index], enr, is_exporter, args)
+            config = ssv_node.generate_config(plan, node_index, topology.operators[node_index], private_keys[node_index], enr, is_exporter, args)
             service_name = "ssv-node-{}".format(node_index)
             ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image)
             node_index += 1
@@ -202,7 +202,16 @@ def run(plan, args):
         # Singular by design (the aetheria side pins the hostname `ssv-exporter`), hence a bool, not a count.
         exporter_enabled = args["nodes"].get("exporter", {}).get("enabled", False)
         if exporter_enabled:
-            exporter_config = ssv_node.generate_config(plan, node_index, topology.infra.cl_url, topology.infra.el_ws, "", enr, True, args)
+            # The archive exporter is an observer, not an operator: it is rendered with the
+            # current node_index WITHOUT incrementing it, so it owns no slot in
+            # operator_pairs. Giving it infra (pair 0) keeps len(operator_pairs) equal to
+            # anchor.count + ssv.count in every configuration, including params-boole.yaml
+            # where nodes.exporter.enabled is true.
+            exporter_endpoints = struct(
+                cl_urls = [topology.infra.cl_url],
+                el_ws_urls = [topology.infra.el_ws],
+            )
+            exporter_config = ssv_node.generate_config(plan, node_index, exporter_endpoints, "", enr, True, args)
             ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, ssv_image)
 
         ssv_services = plan.add_services(
