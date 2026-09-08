@@ -226,12 +226,17 @@ def run(plan, args):
     if ssv_node_count > 0:
         blocks.wait_until_node_reached_block(plan, topology.infra.el_service, 16)
 
+        # Opt-in, default False (see the comment in ssv_node.generate_config for why: nothing in
+        # this repo provisions an OTLP collector, and a failed export breaks the Kurtosis log
+        # stream for the whole service).
+        enable_traces = args["nodes"].get("ssv", {}).get("enable_traces", False)
+
         ssv_configs = {}
         for _ in range(0, ssv_node_count):
             is_exporter = False
             config = ssv_node.generate_config(plan, node_index, topology.operators[node_index], private_keys[node_index], enr, is_exporter, args)
             service_name = "ssv-node-{}".format(node_index)
-            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image)
+            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image, enable_traces)
             node_index += 1
 
         # Optional archive-exporter node (enabled in params-boole). Read-only: an empty operator key —
@@ -250,7 +255,7 @@ def run(plan, args):
                 el_ws_urls = [topology.infra.el_ws],
             )
             exporter_config = ssv_node.generate_config(plan, node_index, exporter_endpoints, "", enr, True, args)
-            ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, ssv_image)
+            ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, ssv_image, enable_traces)
 
         ssv_services = plan.add_services(
             ssv_configs,
