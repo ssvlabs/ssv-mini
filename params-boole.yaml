@@ -37,6 +37,12 @@ use_static_keys: true
 # from genesis.
 pre_register_validators: false
 
+# pre_register_count partitions the pool (P = first N keyshares, D = the rest) when
+# pre_register_validators is true — see params.yaml for the full P⊎D semantics. Kept here so
+# `make run-boole PRE_REGISTER_COUNT=N` has a key to substitute (the Makefile fails on a missing key).
+# 0 registers the full set.
+pre_register_count: 0
+
 # ENABLED for the aetheria (boole) suite: it reads chain timing (genesis, seconds-per-slot,
 # slots-per-epoch) from the monitor's /api/environment (dora doesn't serve it) to anchor its
 # fork-relative windows. Needs a local image tagged `monitor` — build it via `make prepare-monitor`.

@@ -8,11 +8,15 @@ WORK_DIR=$(mktemp -d)
 
 # Configuration — must match params.yaml and ethereum-package defaults
 MNEMONIC="giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"
-# These define the SSV seed layout (indices 64-73). utils/constants.star mirrors them
-# (SSV_SEED_START_INDEX / SSV_MANAGED_VALIDATOR_COUNT) for main.star's runtime validator-layout guard;
-# keep the two in sync when regenerating.
-CL_VALIDATOR_START=64    # First 64 validators belong to CL nodes (32 * 2 nodes)
-SSV_VALIDATOR_COUNT=10   # 74 total - 64 CL = 10 SSV validators
+# The SSV seed layout, both env-overridable to scale the pool (ssvlabs/aetheria#176). SSV_VALIDATOR_COUNT
+# is the pool size (keyshares for indices [START, START+N)); CL_VALIDATOR_START is the VC total = the seed
+# start index, which must equal the genesis VC cohort (params validator_count*count) — scale it WITH the
+# pool so the always-on VC majority keeps the chain justifying while the SSV pool is > 1/3 of the set.
+# Step 4 below syncs constants.star (SSV_SEED_START_INDEX / SSV_MANAGED_VALIDATOR_COUNT) + params
+# preregistered so they can't drift; regenerate the aetheria seed to the same N (ssvlabs/aetheria
+# `orchestrator/cmd/gen-testnet-seed -count N -start START`).
+CL_VALIDATOR_START=${CL_VALIDATOR_START:-64}     # VC total = SSV seed start index
+SSV_VALIDATOR_COUNT=${SSV_VALIDATOR_COUNT:-10}   # SSV pool size, indices [CL_VALIDATOR_START, +count)
 NUM_OPERATORS=4
 OWNER_ADDRESS="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
 
@@ -128,6 +132,37 @@ docker run --rm --entrypoint="" \
         echo ""
         echo "  Generated keyshares with $NONCE shares"
     '
+
+# Step 4: sync the layout mirrors so main.star's guard + the params match the keyshares just generated.
+# SSV_SEED_START_INDEX = the VC total (CL_VALIDATOR_START); the pool follows it; preregistered covers both.
+# The VC cohort itself (params validator_count*count) is per-network and NOT synced here — only params-gloas
+# carries a non-default VC (aetheria's provision-pool.sh sets it per suite). It must EQUAL CL_VALIDATOR_START
+# or main.star's guard fails the run, so the NOTE below flags it at generation time.
+
+# verify_synced re-reads a value back out and confirms it matches: sed -i exits 0 even when it substituted
+# nothing, so a mirror whose line drifts (a renamed key, a reformatted assignment) would silently stay stale
+# while the summary below claims it moved — and with main.star's guard now enforcing equality, that surfaces
+# as a hard plan-time fail three steps later, not here. Fail loudly at the substitution instead.
+verify_synced() {
+    local file="$1" extract="$2" want="$3" what="$4" got
+    got=$(sed -nE "$extract" "$file")
+    [ "$got" = "$want" ] || { echo "ERROR: $what in $file is '$got', expected '$want' — sed did not substitute (line format changed?)" >&2; exit 1; }
+}
+
+echo ""
+echo "Step 4/4: Syncing layout mirrors (VC start=$CL_VALIDATOR_START, SSV pool=$SSV_VALIDATOR_COUNT)..."
+PREREGISTERED=$((CL_VALIDATOR_START + SSV_VALIDATOR_COUNT))
+sed -i.bak -E "s/^(SSV_SEED_START_INDEX = )[0-9]+/\1$CL_VALIDATOR_START/;s/^(SSV_MANAGED_VALIDATOR_COUNT = )[0-9]+/\1$SSV_VALIDATOR_COUNT/" "$PROJECT_DIR/utils/constants.star" && rm -f "$PROJECT_DIR/utils/constants.star.bak"
+verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_SEED_START_INDEX = ([0-9]+).*/\1/p" "$CL_VALIDATOR_START" "SSV_SEED_START_INDEX"
+verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_MANAGED_VALIDATOR_COUNT = ([0-9]+).*/\1/p" "$SSV_VALIDATOR_COUNT" "SSV_MANAGED_VALIDATOR_COUNT"
+for P in "$PROJECT_DIR"/params.yaml "$PROJECT_DIR"/params-gloas.yaml "$PROJECT_DIR"/params-boole.yaml; do
+    [ -f "$P" ] || continue
+    sed -i.bak -E "s/^([[:space:]]*preregistered_validator_count:[[:space:]]*)[0-9]+/\1$PREREGISTERED/" "$P" && rm -f "$P.bak"
+    verify_synced "$P" "s/^[[:space:]]*preregistered_validator_count:[[:space:]]*([0-9]+).*/\1/p" "$PREREGISTERED" "preregistered_validator_count"
+done
+echo "  SSV_SEED_START_INDEX=$CL_VALIDATOR_START, SSV_MANAGED_VALIDATOR_COUNT=$SSV_VALIDATOR_COUNT, preregistered_validator_count=$PREREGISTERED"
+
+echo "  NOTE: params validator_count*count must equal SSV_SEED_START_INDEX ($CL_VALIDATOR_START); not synced here — hand-edit params if you changed CL_VALIDATOR_START."
 
 echo ""
 echo "=== Static files generated ==="
