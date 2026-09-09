@@ -200,6 +200,12 @@ prepare-blindspot-proxy:
 
 # ── Fault injection (EL node management) ─────────────────────────────
 
+# EL_SERVICE names an ethereum-package service, and that name embeds the CL it is paired with —
+# so it differs per profile: params.yaml/params-boole.yaml run lighthouse, params-gloas*.yaml run
+# lodestar. There is no default that is correct for both, so this one matches params.yaml and the
+# Gloas profiles must override it:
+#   EL_SERVICE=el-1-geth-lodestar make stop-el
+# Check the real name with: kurtosis enclave inspect $(ENCLAVE_NAME) | grep el-
 EL_SERVICE?=el-1-geth-lighthouse
 EL_IMAGE?=node/geth-faulty
 
@@ -212,11 +218,26 @@ swap-el:
 	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image $(EL_IMAGE)
 	@echo "Done. $(EL_SERVICE) is now running $(EL_IMAGE)"
 
-# Restore EL node to the default geth image from params.yaml
+# Restore EL node to params.yaml's stock geth image.
+#
+# HAZARD: the image below is params.yaml's stock geth. On a Gloas profile the EL is a
+# DIGEST-PINNED ethpandaops/geth devnet build, and stock geth does not implement EIP-7732 — so
+# running this there silently downgrades the execution layer and every Gloas duty starts failing
+# for a reason that looks nothing like the cause. Pass the right image explicitly on those
+# profiles, or just use stop-el/start-el, which do not touch the image at all.
+RESTORE_EL_IMAGE?=ethereum/client-go:v1.16.7
 .PHONY: restore-el
 restore-el:
-	@echo "Restoring $(EL_SERVICE) to default geth image..."
-	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.16.7
+	@case "$(PARAMS_FILE)" in *gloas*) \
+		test "$(RESTORE_EL_IMAGE)" != "ethereum/client-go:v1.16.7" || { \
+			echo "Error: refusing to restore $(EL_SERVICE) to $(RESTORE_EL_IMAGE) on a Gloas profile"; \
+			echo "       ($(PARAMS_FILE)) — stock geth has no EIP-7732 and would break every Gloas duty."; \
+			echo "       Pass the profile's pinned image, e.g.:"; \
+			echo "         RESTORE_EL_IMAGE=ethpandaops/geth:master make restore-el"; \
+			echo "       Or use stop-el/start-el, which leave the image alone."; \
+			exit 1; }; ;; esac
+	@echo "Restoring $(EL_SERVICE) to $(RESTORE_EL_IMAGE)..."
+	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image $(RESTORE_EL_IMAGE)
 	@echo "Done. $(EL_SERVICE) restored."
 
 # Stop an EL node (simulate crash)
@@ -232,6 +253,79 @@ start-el:
 	@echo "Starting $(EL_SERVICE)..."
 	kurtosis service start $(ENCLAVE_NAME) $(EL_SERVICE)
 	@echo "$(EL_SERVICE) started."
+
+# ── Network faults and CL lifecycle (P0.4) ───────────────────────────
+# Delegated to scripts/netem, which resolves containers by kurtosis label (enclave-scoped) and
+# reads each operator's ACTUAL beacon endpoint out of its rendered config, so operator_pairs
+# fallbacks and shared primaries are accounted for rather than re-derived from the params file.
+#
+# TARGET picks the link, because M4 shapes two different ones: bn (the operator -> its beacon node,
+# what FLT-01 and PTC-06 measure), p2p (the operator -> the other operators, FLT-02's partition) or
+# all (a bare root qdisc over every egress packet). Default is bn. Shaping everything when a card
+# meant one link is what makes PTC-06's latency curve unattributable, so the knob is explicit.
+#
+# Delay is ONE-WAY egress: `MS=200` adds ~200 ms to the request leg, not 200 ms of round trip.
+# Applying is idempotent — the target's root qdisc is cleared first, so a 200/500/1000 ladder is
+# three calls and can never stack two netem qdiscs on one interface.
+#
+# Usage:
+#   make fault-latency OP=0 MS=200                 # FLT-01 ladder, bn link
+#   make fault-latency OP=0 MS=4000 TARGET=p2p     # PTC-04, late envelope
+#   make fault-loss    OP=2 PCT=10
+#   make fault-partition OP=1 TARGET=p2p           # FLT-02, leader vs peers
+#   make restore-net   OP=0
+#   make netem-show    OP=0                        # what is actually installed
+#   make netem-topology                            # operator -> primary beacon node
+#   make stop-cl OP=3                              # refuses if that CL is shared
+#   make start-cl OP=3
+.PHONY: fault-latency
+fault-latency:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make fault-latency OP=0 MS=200"; exit 1; }
+	@test -n "$(MS)" || { echo "Error: MS is required (milliseconds of one-way delay), e.g. make fault-latency OP=$(OP) MS=200"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/netem latency --op "$(OP)" --ms "$(MS)" --target "$(or $(TARGET),bn)"
+
+.PHONY: fault-loss
+fault-loss:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make fault-loss OP=0 PCT=10"; exit 1; }
+	@test -n "$(PCT)" || { echo "Error: PCT is required (0-100 percent packet loss), e.g. make fault-loss OP=$(OP) PCT=10"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/netem loss --op "$(OP)" --pct "$(PCT)" --target "$(or $(TARGET),bn)"
+
+.PHONY: fault-partition
+fault-partition:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make fault-partition OP=1 TARGET=p2p"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/netem partition --op "$(OP)" --target "$(or $(TARGET),p2p)"
+
+.PHONY: restore-net
+restore-net:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make restore-net OP=0"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/netem restore --op "$(OP)"
+
+.PHONY: netem-show
+netem-show:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make netem-show OP=0"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/netem show --op "$(OP)"
+
+.PHONY: netem-topology
+netem-topology:
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/netem topology
+
+# stop-cl/start-cl address the OPERATOR, not the pair, and resolve through its rendered config.
+# They REFUSE when that beacon node also backs another operator (FORCE=1 overrides), because
+# "stop operator 3's CL" quietly taking the rest of the committee with it is how an FLT-04 result
+# gets misattributed. On the default profiles every operator shares pair 0, so the guard fires there.
+.PHONY: stop-cl
+stop-cl:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make stop-cl OP=3"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) FORCE=$(or $(FORCE),0) ./scripts/netem stop-cl --op "$(OP)"
+
+.PHONY: start-cl
+start-cl:
+	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make start-cl OP=3"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) FORCE=$(or $(FORCE),0) ./scripts/netem start-cl --op "$(OP)"
+
+.PHONY: test-netem
+test-netem:
+	@./tests/netem/run-tests.sh
 
 # ── M3 fault menu ────────────────────────────────────────────────────
 # The instrumented node reads FAULT once at boot, so switching a fault means a
@@ -538,6 +632,15 @@ help:
 	@echo "  make restore-el                          Restore EL to default geth"
 	@echo "  make stop-el                             Stop EL (simulate crash)"
 	@echo "  make start-el                            Restart stopped EL"
+	@echo ""
+	@echo "Network faults / CL lifecycle (P0.4):"
+	@echo "  make fault-latency OP=0 MS=200            One-way egress delay; TARGET=bn|p2p|all (default bn)"
+	@echo "  make fault-loss OP=2 PCT=10               Egress packet loss; same TARGET knob"
+	@echo "  make fault-partition OP=1 TARGET=p2p      100% loss toward the chosen link"
+	@echo "  make restore-net OP=0                     Clear all shaping on one operator"
+	@echo "  make netem-show OP=0                      Show the qdiscs/filters actually installed"
+	@echo "  make netem-topology                       Operator -> primary beacon node"
+	@echo "  make stop-cl OP=3 / start-cl OP=3         That operator's beacon node (refuses if shared)"
 	@echo "  EL_SERVICE=el-2-geth-lighthouse make stop-el   Target specific EL"
 	@echo ""
 	@echo "Fault injection (M3, SSV node):"
@@ -571,6 +674,7 @@ help:
 	@echo ""
 	@echo "Tests:"
 	@echo "  make test-faulty-el  Bloom filter cross-check test (needs bloom-check SSV)"
+	@echo "  make test-netem      Unit tests for the netem helpers (no enclave needed)"
 	@echo "  make test-topology                       Run the operator_pairs validation suite"
 
 # ── Network scenarios ────────────────────────────────────────────────

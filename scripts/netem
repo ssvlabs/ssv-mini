@@ -1,0 +1,381 @@
+#!/bin/bash
+# Network-fault injection for ssv-mini (P0.4). Shapes ONE operator's links with tc/netem.
+#
+# WHY A SIDECAR AND NOT `tc` IN THE NODE IMAGE
+# tc must run in the target's network NAMESPACE, not in its filesystem, so this drives it from a
+# throwaway `nicolaka/netshoot` container sharing that namespace. The SSV image therefore needs no
+# iproute2 (its runtime stage carries only dnsutils), and the same command reaches CL and EL
+# containers, which an in-container `apt install` cannot — several client images ship neither apt
+# nor tc, and FLT-01 shapes the BEACON link, so the CL side matters.
+#
+# WHY PER-DESTINATION FILTERING IS NOT OPTIONAL
+# `tc qdisc add dev eth0 root netem delay 200ms` shapes ALL egress. That merges FLT-01 (beacon-node
+# latency) with FLT-02 (P2P partition) and makes PTC-06's convergence-against-latency curve
+# unattributable — you cannot tell which link caused the non-convergence you measured. So TARGET
+# selects the link, and only TARGET=all uses a bare root qdisc.
+#
+# WHAT IS GROUND TRUTH FOR "OPERATOR N's BEACON NODE"
+# The RENDERED config inside the container (`/ssv-config/ssv-config-N.yaml`), not the params file.
+# It carries the resolved endpoint list, so it already accounts for operator_pairs fallbacks and
+# shared primaries; parsing YAML would re-derive, and could disagree. Anchor operators keep the
+# same information in their `--beacon-nodes` flag, which is read instead.
+#
+# DELAY IS ONE-WAY (EGRESS). A `delay 200ms` toward the beacon node adds ~200 ms to the request
+# leg, not 400 ms round-trip. Shaping the return leg too needs an `ifb` redirect, which depends on
+# the ifb kernel module being loadable in the Docker VM — untested here, deliberately left out.
+# Record the injected value, and do not describe it as RTT.
+#
+# APPLY IS IDEMPOTENT: it clears the target's root qdisc first, so a ladder (200 -> 500 -> 1000 ms)
+# is just three calls and can never silently stack two netem qdiscs on one interface.
+#
+# Live behaviour (tc, container resolution) is verified by hand against a running enclave; the pure
+# helpers below are unit-tested by tests/netem/run-tests.sh. A mocked `tc` would only assert the
+# mock, so it is not faked.
+#
+# Usage (normally via the Makefile targets — see `make help`):
+#   scripts/netem latency   --op 0 --ms 200 [--target bn|p2p|all]
+#   scripts/netem loss      --op 2 --pct 10 [--target ...]
+#   scripts/netem partition --op 1          [--target p2p]
+#   scripts/netem restore   --op 0
+#   scripts/netem show      --op 0
+#   scripts/netem stop-cl   --op 3        [FORCE=1 to override the shared-CL guard]
+#   scripts/netem start-cl  --op 3
+#   scripts/netem topology
+
+set -uo pipefail
+
+ENCLAVE_NAME=${ENCLAVE_NAME:-localnet}
+NETSHOOT_IMAGE=${NETSHOOT_IMAGE:-nicolaka/netshoot}
+NETEM_DEV=${NETEM_DEV:-eth0}
+
+# ─────────────────────────── pure helpers (unit-tested) ───────────────────────────
+
+# netem_primary_host <BeaconNodeAddr value> -> the PRIMARY endpoint's host.
+# go-SSV joins endpoints with ';' and Anchor with ',', entry 0 being the primary; fallbacks are
+# deliberately ignored, because shaping a fallback would target a CL the operator is not using.
+netem_primary_host() {
+  local raw=${1-}
+  raw=${raw//\"/}
+  raw="$(printf '%s' "$raw" | tr -d '[:space:]')"
+  [ -n "$raw" ] || { echo "netem: empty beacon address" >&2; return 1; }
+  raw=${raw%%;*}          # go-SSV separator
+  raw=${raw%%,*}          # Anchor separator
+  raw=${raw#*://}         # strip scheme
+  raw=${raw%%/*}          # strip any path
+  raw=${raw%%:*}          # strip port
+  [ -n "$raw" ] || { echo "netem: could not parse a host out of '${1-}'" >&2; return 1; }
+  printf '%s\n' "$raw"
+}
+
+netem_validate_op() {
+  case "${1-}" in ''|*[!0-9]*) echo "netem: --op must be a non-negative integer (0-indexed operator), got '${1-}'" >&2; return 1 ;; esac
+}
+netem_validate_ms() {
+  case "${1-}" in ''|*[!0-9]*) echo "netem: --ms must be a positive integer of milliseconds, got '${1-}'" >&2; return 1 ;; esac
+  [ "$1" -gt 0 ] || { echo "netem: --ms must be greater than 0 (use 'restore' to clear a fault, not --ms 0)" >&2; return 1; }
+}
+netem_validate_pct() {
+  case "${1-}" in ''|*[!0-9]*) echo "netem: --pct must be an integer 0-100, got '${1-}'" >&2; return 1 ;; esac
+  [ "$1" -le 100 ] || { echo "netem: --pct must be 0-100, got '$1'" >&2; return 1; }
+}
+netem_validate_target() {
+  case "${1-}" in
+    bn|p2p|all) return 0 ;;
+    *) echo "netem: --target must be bn (the operator's beacon node), p2p (the other operators) or all (every egress packet), got '${1-}'" >&2; return 1 ;;
+  esac
+}
+
+# netem_shared_ops <op> <host> <map> -> space-separated OTHER operators whose primary is <host>.
+# The shared-CL guard depends on this: "stop operator 3's CL" silently taking op0 down with it is
+# how an FLT-04 run gets misread. <map> is 'op<TAB>host' lines, as netem_topology emits.
+netem_shared_ops() {
+  local self=$1 host=$2 map=${3-} out=()
+  while IFS=$'\t' read -r op h; do
+    [ -n "${op:-}" ] || continue
+    [ "$op" = "$self" ] && continue
+    [ "$h" = "$host" ] && out+=("$op")
+  done <<< "$map"
+  printf '%s\n' "${out[*]-}"
+}
+
+# netem_peer_ops <op> <map> -> every OTHER operator (the TARGET=p2p set).
+netem_peer_ops() {
+  local self=$1 map=${2-} out=()
+  while IFS=$'\t' read -r op h; do
+    [ -n "${op:-}" ] || continue
+    [ "$op" = "$self" ] && continue
+    out+=("$op")
+  done <<< "$map"
+  printf '%s\n' "${out[*]-}"
+}
+
+# ─────────────────────── enclave / docker / tc (needs a live enclave) ───────────────────────
+
+netem_enclave_uuid() {
+  local uuid
+  uuid=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids 2>/dev/null | awk '/^UUID:/{print $2}')
+  [ -n "$uuid" ] || {
+    echo "netem: enclave '$ENCLAVE_NAME' was not found. Nothing was changed." >&2
+    echo "       Check: kurtosis enclave ls" >&2
+    return 1
+  }
+  printf '%s\n' "$uuid"
+}
+
+# netem_container <kurtosis service name> -> container id.
+# Label-based and enclave-scoped on purpose: a name-prefix match would also hit a same-named
+# service in another enclave.
+netem_container() {
+  local svc=$1 uuid=$2 ids
+  ids=$(docker ps --filter "label=kurtosis_service_name=$svc" \
+                  --filter "label=kurtosis_enclave_uuid=$uuid" --format '{{.ID}}')
+  local n; n=$(printf '%s\n' "$ids" | grep -c .)
+  if [ "$n" -eq 0 ]; then
+    echo "netem: no RUNNING container for service '$svc' in enclave '$ENCLAVE_NAME'." >&2
+    echo "       If it was stopped deliberately, start it first; tc needs a live network namespace." >&2
+    return 1
+  fi
+  if [ "$n" -gt 1 ]; then
+    echo "netem: '$svc' matched $n containers in enclave '$ENCLAVE_NAME' — refusing to guess." >&2
+    return 1
+  fi
+  printf '%s\n' "$ids"
+}
+
+# netem_op_service <op> <uuid> -> the service name for a global operator index.
+# Anchor operators occupy the first indices and SSV continues from there, but rather than reading
+# that split out of the params file we simply ask which container exists.
+netem_op_service() {
+  local op=$1 uuid=$2 svc
+  for svc in "ssv-node-$op" "anchor-node-$op"; do
+    if docker ps --filter "label=kurtosis_service_name=$svc" \
+                 --filter "label=kurtosis_enclave_uuid=$uuid" --format '{{.ID}}' | grep -q .; then
+      printf '%s\n' "$svc"; return 0
+    fi
+  done
+  echo "netem: operator $op has neither an 'ssv-node-$op' nor an 'anchor-node-$op' container running in '$ENCLAVE_NAME'." >&2
+  return 1
+}
+
+# netem_op_bn_addr <op> <svc> <cid> -> the raw primary-endpoint string for that operator.
+netem_op_bn_addr() {
+  local op=$1 svc=$2 cid=$3 raw
+  case "$svc" in
+    ssv-node-*)
+      raw=$(docker exec "$cid" sh -c "grep -m1 BeaconNodeAddr /ssv-config/ssv-config-$op.yaml" 2>/dev/null \
+            | sed 's/.*BeaconNodeAddr:[[:space:]]*//')
+      ;;
+    anchor-node-*)
+      # Anchor keeps it on the command line rather than in a rendered file.
+      raw=$(docker inspect --format '{{join .Config.Cmd " "}}' "$cid" 2>/dev/null \
+            | tr ' ' '\n' | grep -A1 -x -- '--beacon-nodes' | tail -1)
+      ;;
+  esac
+  [ -n "${raw:-}" ] || {
+    echo "netem: could not read operator $op's beacon endpoint from $svc." >&2
+    echo "       go-SSV: expected BeaconNodeAddr in /ssv-config/ssv-config-$op.yaml" >&2
+    echo "       Anchor: expected a --beacon-nodes flag on the container command" >&2
+    return 1
+  }
+  printf '%s\n' "$raw"
+}
+
+# netem_topology -> 'op<TAB>primary-host' for every operator in the enclave, ascending.
+netem_topology() {
+  local uuid; uuid=$(netem_enclave_uuid) || return 1
+  local names op svc cid addr host
+  names=$(docker ps --filter "label=kurtosis_enclave_uuid=$uuid" \
+                    --format '{{.Label "kurtosis_service_name"}}' \
+          | grep -E '^(ssv-node|anchor-node)-[0-9]+$' | sort -t- -k3 -n)
+  [ -n "$names" ] || { echo "netem: no operator containers found in enclave '$ENCLAVE_NAME'." >&2; return 1; }
+  while read -r svc; do
+    [ -n "$svc" ] || continue
+    op=${svc##*-}
+    cid=$(netem_container "$svc" "$uuid") || return 1
+    addr=$(netem_op_bn_addr "$op" "$svc" "$cid") || return 1
+    host=$(netem_primary_host "$addr") || return 1
+    printf '%s\t%s\n' "$op" "$host"
+  done <<< "$names"
+}
+
+# netem_sidecar <container id> <tc args...> — run one command in the target's netns.
+netem_sidecar() {
+  local cid=$1; shift
+  docker run --rm --net="container:$cid" --cap-add=NET_ADMIN "$NETSHOOT_IMAGE" "$@"
+}
+
+# netem_resolve_ip <container id> <host> -> IP, resolved FROM INSIDE the target's namespace, which
+# is what the node itself would resolve.
+netem_resolve_ip() {
+  local cid=$1 host=$2 ip
+  ip=$(netem_sidecar "$cid" getent hosts "$host" 2>/dev/null | awk 'NR==1{print $1}')
+  [ -n "$ip" ] || { echo "netem: could not resolve '$host' from inside the target's network namespace." >&2; return 1; }
+  printf '%s\n' "$ip"
+}
+
+netem_clear() {  # idempotent: a missing root qdisc is not an error
+  local cid=$1
+  netem_sidecar "$cid" tc qdisc del dev "$NETEM_DEV" root >/dev/null 2>&1
+  return 0
+}
+
+# netem_apply <cid> <target> <netem spec...> — clears first, then installs.
+# For a filtered target: a 3-band prio qdisc whose priomap sends everything to the unshaped band,
+# plus u32 filters steering only the matched destinations into the netem band.
+netem_apply() {
+  local cid=$1 target=$2; shift 2
+  local spec=("$@") ips=("${NETEM_TARGET_IPS[@]-}")
+  netem_clear "$cid"
+  if [ "$target" = "all" ]; then
+    netem_sidecar "$cid" tc qdisc add dev "$NETEM_DEV" root netem "${spec[@]}" || return 1
+    return 0
+  fi
+  [ "${#ips[@]}" -gt 0 ] && [ -n "${ips[0]}" ] || {
+    echo "netem: target '$target' resolved to no destination addresses — refusing to shape all egress by accident." >&2
+    return 1
+  }
+  netem_sidecar "$cid" tc qdisc add dev "$NETEM_DEV" root handle 1: prio bands 3 \
+      priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 || return 1
+  netem_sidecar "$cid" tc qdisc add dev "$NETEM_DEV" parent 1:3 handle 30: netem "${spec[@]}" || return 1
+  local ip
+  for ip in "${ips[@]}"; do
+    [ -n "$ip" ] || continue
+    netem_sidecar "$cid" tc filter add dev "$NETEM_DEV" protocol ip parent 1: prio 1 \
+        u32 match ip dst "$ip/32" flowid 1:3 || return 1
+  done
+  return 0
+}
+
+# Populate NETEM_TARGET_IPS for the chosen target.
+netem_target_ips() {
+  local op=$1 target=$2 uuid=$3 cid=$4
+  NETEM_TARGET_IPS=()
+  case "$target" in
+    all) return 0 ;;
+    bn)
+      local svc addr host ip
+      svc=$(netem_op_service "$op" "$uuid") || return 1
+      addr=$(netem_op_bn_addr "$op" "$svc" "$cid") || return 1
+      host=$(netem_primary_host "$addr") || return 1
+      ip=$(netem_resolve_ip "$cid" "$host") || return 1
+      NETEM_TARGET_IPS=("$ip")
+      echo "  target: beacon node $host ($ip)"
+      ;;
+    p2p)
+      local map peers p psvc pcid pip
+      map=$(netem_topology) || return 1
+      peers=$(netem_peer_ops "$op" "$map")
+      [ -n "$peers" ] || { echo "netem: operator $op has no peer operators to partition from." >&2; return 1; }
+      for p in $peers; do
+        psvc=$(netem_op_service "$p" "$uuid") || return 1
+        pcid=$(netem_container "$psvc" "$uuid") || return 1
+        pip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$pcid")
+        [ -n "$pip" ] || { echo "netem: could not read an IP for peer operator $p ($psvc)." >&2; return 1; }
+        NETEM_TARGET_IPS+=("$pip")
+        echo "  target: peer operator $p $psvc ($pip)"
+      done
+      ;;
+  esac
+  return 0
+}
+
+# ─────────────────────────────────── commands ───────────────────────────────────
+
+netem_cmd() {
+  local verb=$1; shift
+  local op="" ms="" pct="" target="bn"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --op) op=${2-}; shift 2 ;;
+      --ms) ms=${2-}; shift 2 ;;
+      --pct) pct=${2-}; shift 2 ;;
+      --target) target=${2-}; shift 2 ;;
+      *) echo "netem: unknown argument '$1'" >&2; return 1 ;;
+    esac
+  done
+
+  if [ "$verb" = "topology" ]; then
+    local map; map=$(netem_topology) || return 1
+    echo "operator -> primary beacon node (enclave $ENCLAVE_NAME):"
+    printf '%s\n' "$map" | while IFS=$'\t' read -r o h; do printf '  op%s -> %s\n' "$o" "$h"; done
+    return 0
+  fi
+
+  netem_validate_op "$op" || return 1
+  local uuid cid svc
+  uuid=$(netem_enclave_uuid) || return 1
+  svc=$(netem_op_service "$op" "$uuid") || return 1
+  cid=$(netem_container "$svc" "$uuid") || return 1
+
+  case "$verb" in
+    restore)
+      netem_clear "$cid"
+      echo "netem: cleared all shaping on $svc (dev $NETEM_DEV)."
+      ;;
+    show)
+      echo "── $svc (dev $NETEM_DEV) qdiscs ──"
+      netem_sidecar "$cid" tc -s qdisc show dev "$NETEM_DEV"
+      echo "── filters ──"
+      netem_sidecar "$cid" tc filter show dev "$NETEM_DEV" 2>/dev/null || true
+      ;;
+    latency)
+      netem_validate_ms "$ms" || return 1
+      netem_validate_target "$target" || return 1
+      echo "netem: ${ms}ms one-way egress delay on $svc, target=$target"
+      netem_target_ips "$op" "$target" "$uuid" "$cid" || return 1
+      netem_apply "$cid" "$target" delay "${ms}ms" || return 1
+      echo "netem: applied. Clear it with: make restore-net OP=$op"
+      ;;
+    loss)
+      netem_validate_pct "$pct" || return 1
+      netem_validate_target "$target" || return 1
+      echo "netem: ${pct}% egress packet loss on $svc, target=$target"
+      netem_target_ips "$op" "$target" "$uuid" "$cid" || return 1
+      netem_apply "$cid" "$target" loss "${pct}%" || return 1
+      echo "netem: applied. Clear it with: make restore-net OP=$op"
+      ;;
+    partition)
+      netem_validate_target "$target" || return 1
+      echo "netem: 100% egress loss (partition) on $svc, target=$target"
+      netem_target_ips "$op" "$target" "$uuid" "$cid" || return 1
+      netem_apply "$cid" "$target" loss "100%" || return 1
+      echo "netem: applied. Clear it with: make restore-net OP=$op"
+      ;;
+    stop-cl|start-cl)
+      local addr host map shared action
+      addr=$(netem_op_bn_addr "$op" "$svc" "$cid") || return 1
+      host=$(netem_primary_host "$addr") || return 1
+      # THE SHARED-CL GUARD. With operator_pairs a CL can back several operators, and the default
+      # profiles put EVERY operator on pair 0 — so "stop operator 3's CL" can silently take the
+      # whole committee down. An FLT-04 run misread that way looks like a node defect. Refuse
+      # unless the caller says they meant it.
+      map=$(netem_topology) || return 1
+      shared=$(netem_shared_ops "$op" "$host" "$map")
+      if [ -n "$shared" ] && [ "${FORCE:-0}" != "1" ]; then
+        echo "netem: REFUSING — $host is also the primary beacon node of operator(s): $shared" >&2
+        echo "       Stopping it affects them too, which is not what 'operator $op's CL' implies." >&2
+        echo "       Either use a profile that gives operator $op its own pair (see operator_pairs" >&2
+        echo "       in params-gloas-multibn.yaml), or say you meant it:" >&2
+        echo "         FORCE=1 make ${verb} OP=$op" >&2
+        return 1
+      fi
+      [ -n "$shared" ] && echo "netem: WARNING — $host is shared with operator(s) $shared; FORCE=1 given, proceeding."
+      # Explicit words rather than suffixing the verb: "start" + "ped" reads "startped".
+      local action gerund past
+      case "$verb" in
+        stop-cl)  action=stop;  gerund=stopping;  past=stopped ;;
+        start-cl) action=start; gerund=starting;  past=started ;;
+      esac
+      echo "netem: $gerund $host (operator $op's primary beacon node)"
+      kurtosis service "$action" "$ENCLAVE_NAME" "$host" || return 1
+      echo "netem: $host $past."
+      ;;
+    *) echo "netem: unknown command '$verb'" >&2; return 1 ;;
+  esac
+}
+
+# Only run when executed, so tests/netem/run-tests.sh can source the helpers.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  [ $# -gt 0 ] || { sed -n '/^# Usage/,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+  netem_cmd "$@"
+fi
