@@ -135,17 +135,34 @@ docker run --rm --entrypoint="" \
 
 # Step 4: sync the layout mirrors so main.star's guard + the params match the keyshares just generated.
 # SSV_SEED_START_INDEX = the VC total (CL_VALIDATOR_START); the pool follows it; preregistered covers both.
-# The VC cohort itself (params validator_count*count) is set separately (per-network) and must EQUAL
-# CL_VALIDATOR_START — only params-gloas.yaml carries the big VC, and main.star's guard fails the run
-# if it drifts.
+# The VC cohort itself (params validator_count*count) is per-network and NOT synced here — only params-gloas
+# carries a non-default VC (aetheria's provision-pool.sh sets it per suite). It must EQUAL CL_VALIDATOR_START
+# or main.star's guard fails the run, so the NOTE below flags it at generation time.
+
+# verify_synced re-reads a value back out and confirms it matches: sed -i exits 0 even when it substituted
+# nothing, so a mirror whose line drifts (a renamed key, a reformatted assignment) would silently stay stale
+# while the summary below claims it moved — and with main.star's guard now enforcing equality, that surfaces
+# as a hard plan-time fail three steps later, not here. Fail loudly at the substitution instead.
+verify_synced() {
+    local file="$1" extract="$2" want="$3" what="$4" got
+    got=$(sed -nE "$extract" "$file")
+    [ "$got" = "$want" ] || { echo "ERROR: $what in $file is '$got', expected '$want' — sed did not substitute (line format changed?)" >&2; exit 1; }
+}
+
 echo ""
 echo "Step 4/4: Syncing layout mirrors (VC start=$CL_VALIDATOR_START, SSV pool=$SSV_VALIDATOR_COUNT)..."
 PREREGISTERED=$((CL_VALIDATOR_START + SSV_VALIDATOR_COUNT))
 sed -i.bak -E "s/^(SSV_SEED_START_INDEX = )[0-9]+/\1$CL_VALIDATOR_START/;s/^(SSV_MANAGED_VALIDATOR_COUNT = )[0-9]+/\1$SSV_VALIDATOR_COUNT/" "$PROJECT_DIR/utils/constants.star" && rm -f "$PROJECT_DIR/utils/constants.star.bak"
+verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_SEED_START_INDEX = ([0-9]+).*/\1/p" "$CL_VALIDATOR_START" "SSV_SEED_START_INDEX"
+verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_MANAGED_VALIDATOR_COUNT = ([0-9]+).*/\1/p" "$SSV_VALIDATOR_COUNT" "SSV_MANAGED_VALIDATOR_COUNT"
 for P in "$PROJECT_DIR"/params.yaml "$PROJECT_DIR"/params-gloas.yaml "$PROJECT_DIR"/params-boole.yaml; do
-    [ -f "$P" ] && sed -i.bak -E "s/^([[:space:]]*preregistered_validator_count:[[:space:]]*)[0-9]+/\1$PREREGISTERED/" "$P" && rm -f "$P.bak"
+    [ -f "$P" ] || continue
+    sed -i.bak -E "s/^([[:space:]]*preregistered_validator_count:[[:space:]]*)[0-9]+/\1$PREREGISTERED/" "$P" && rm -f "$P.bak"
+    verify_synced "$P" "s/^[[:space:]]*preregistered_validator_count:[[:space:]]*([0-9]+).*/\1/p" "$PREREGISTERED" "preregistered_validator_count"
 done
 echo "  SSV_SEED_START_INDEX=$CL_VALIDATOR_START, SSV_MANAGED_VALIDATOR_COUNT=$SSV_VALIDATOR_COUNT, preregistered_validator_count=$PREREGISTERED"
+
+echo "  NOTE: params validator_count*count must equal SSV_SEED_START_INDEX ($CL_VALIDATOR_START); not synced here — hand-edit params if you changed CL_VALIDATOR_START."
 
 echo ""
 echo "=== Static files generated ==="

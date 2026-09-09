@@ -57,6 +57,12 @@ async function main() {
     // sending with exactly the estimate starves the subcall into a bare revert. Send with a 2x buffer,
     // capped at gasCap so the doubled estimate stays under the block gas limit.
     const gasEstimate = await ssv.bulkRegisterValidator.estimateGas(publicKeys, operatorIds, sharesData, cluster, { value });
+    // If the bare estimate already meets the cap, clamping to gasCap would send LESS than the estimate and
+    // die as an out-of-gas revert — the same bare revert the 2x buffer exists to prevent, only now with no
+    // diagnostic. Fail fast pointing at the batch instead; the clamp below still handles the overshoot case.
+    if (gasEstimate >= gasCap) {
+      throw new Error("batch " + (i / BATCH_SIZE) + " (shares " + i + ".." + (i + batch.length - 1) + "): gas estimate " + gasEstimate + " >= cap " + gasCap + " (90% of block gas limit) — lower BATCH_SIZE");
+    }
     const buffered = gasEstimate * 2n;
     const gasLimit = buffered < gasCap ? buffered : gasCap;
     const receipt = await (await ssv.bulkRegisterValidator(publicKeys, operatorIds, sharesData, cluster, { value, gasLimit })).wait();

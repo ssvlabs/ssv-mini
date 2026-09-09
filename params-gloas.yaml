@@ -9,7 +9,7 @@
 # EIP-7688/7916 progressive-merkleization block root and rejected every §4 submit with 500
 # BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021); devnet-8 clears it — the aetheria#176 boot validated
 # the full ePBS lifecycle on this pin (§4 published, §6 CONFIRMED, CL head continuity through the fork).
-# §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-6 (blocks land
+# §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-8 (blocks land
 # canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
 # One wrinkle seen on Lodestar: it 500s the redundant all-operator submits with BLOCK_ERROR_ALREADY_KNOWN
@@ -31,8 +31,8 @@
 # that tag drifted into a build that stalled the chain ~1.4 epochs past the Gloas fork; it's pinned to a
 # build validated to sustain liveness ~30 epochs past the fork (ssvlabs/ssv-mini#38). Every image here is
 # now pinned to a fixed build (geth + CL by digest, dora + generator by fixed tag), so the net is
-# reproducible. To advance with devnet-6: `docker pull ethpandaops/geth:glamsterdam-devnet-6`, read its
-# digest (`docker inspect --format '{{index .RepoDigests 0}}' ethpandaops/geth:glamsterdam-devnet-6`),
+# reproducible. To advance with devnet-8: `docker pull ethpandaops/geth:glamsterdam-devnet-8`, read its
+# digest (`docker inspect --format '{{index .RepoDigests 0}}' ethpandaops/geth:glamsterdam-devnet-8`),
 # validate a run, then bump el_image below.
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
