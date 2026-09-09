@@ -80,7 +80,7 @@ def generate_config(
 
 SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
 
-def get_service_config(index, config_artifact, image, enable_traces = False):
+def get_service_config(index, config_artifact, image, enable_traces = False, gas_limit = 0):
     """Returns a ServiceConfig for an SSV node without starting it (for use with plan.add_services)."""
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
@@ -93,6 +93,21 @@ def get_service_config(index, config_artifact, image, enable_traces = False):
     if enable_traces:
         env_vars["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"] = "grpc"
         env_vars["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = "http://alloy:4317"
+    # Per-operator MEV gas limit (params key: operator_gas_limits). Deliberately an ENV VAR and not
+    # a config-file field, for one reason: passes doc M3 §6.5 step 5 restores the DEFAULT limit
+    # mid-pass, and `make gas-limit OP=N VALUE=default` does that in one command without
+    # re-rendering a config artifact. cleanenv reads env AFTER the YAML file, so the env value wins.
+    # NOTE `kurtosis service update --env` MERGES rather than replacing the env list (measured on
+    # 1.18.3, 2026-09-09), so it cannot UNSET this: VALUE=default sends an explicit 0, which the
+    # node maps to DefaultGasLimit (36e6) in proposer_preferences.go:573 and
+    # validator_registration.go:288. The merge also means a fault switch does NOT clobber this.
+    # The node's own key is ssv.ValidatorOptions.ExperimentalGasLimit / EXPERIMENTAL_GAS_LIMIT
+    # (src/ssv operator/validator/controller.go:99). `valOpts := cfg.SSVOptions.ValidatorOptions`
+    # in cli/operator/node.go copies the parsed struct and only overwrites RUNTIME fields, so the
+    # configured value survives and is not silently clobbered (checked, not assumed).
+    # 0 means "leave it unset" -> the node's built-in default applies.
+    if gas_limit > 0:
+        env_vars["EXPERIMENTAL_GAS_LIMIT"] = str(gas_limit)
 
     return ServiceConfig(
         image=image,
@@ -102,9 +117,10 @@ def get_service_config(index, config_artifact, image, enable_traces = False):
         # node on address:") to stdout before exec'ing ssvnode, whose own logger then switches to
         # JSON. Kurtosis's log stream is broken by even one non-JSON line for the whole service —
         # that was one of the causes that made `scout.py --env mini logs query` and `kurtosis
-        # service logs` unusable for every ssv-node, independent of the traces fix above. A third,
-        # still-open cause (Kurtosis's own log-collection engine cannot read the resulting
-        # per-line JSON) remains — see README.md's "Reading ssv-node logs on `--env mini`". This
+        # service logs` unusable for every ssv-node, independent of the traces fix above. The third
+        # cause (Kurtosis's own reader could not decode the resulting per-line JSON) is FIXED as of
+        # 2026-09-09 — in the developer's kurtosis-config.yml, not here; see README.md's "Reading
+        # ssv-node logs on `--env mini`" and ssv-scout's docs/kurtosis-logging-options.md. This
         # mirrors exactly what the
         # Makefile target itself does (see its line 129, `${BUILD_PATH} start-node
         # ${NODE_COMMAND_ARGS}`, and the "Command provided:" line's own `--config=...` shape) minus

@@ -258,6 +258,31 @@ start-el:
 fault-list:
 	@cd $(SSV_REPO) && go run ./qa/faults/cmd/list
 
+# NEVER put a `#` comment inside these recipes' backslash-continued blocks. Each recipe here is ONE
+# logical shell line joined by trailing backslashes, so a commented line ending in `\` welds the
+# comment to everything after it and the shell discards the whole remainder — the switch, its error
+# check and the entire verification loop. That produced a silent false PASS (archive written,
+# "Switching..." printed, exit 0, node untouched) caught on 2026-09-09 only by a live run; make -n,
+# sh -n and bash -n all pass it, because the text is valid shell that happens to be a comment.
+# Dropping just the backslash is NOT a fix either: the lines would become separate shells and lose
+# the recipe's $$ENCLAVE_UUID / $$MATCH state. Keep commentary out here, at column 0.
+#
+# `kurtosis service update --env` MERGES into the service's existing environment — it does NOT
+# replace the whole list. Measured on 1.18.3, 2026-09-09: after `make fault` then `make gas-limit`
+# on the SAME operator, the container carried FAULT, EXPERIMENTAL_GAS_LIMIT and CONFIG_PATH all at
+# once. The long-standing note in this repo that a switch wipes the env list (and therefore drops
+# the OTEL traces pair, and therefore that `fault` and `gas-limit` clobber each other) is WRONG.
+# Commit 86f8750's move of --config= into the entrypoint is still correct and worth keeping, but
+# its stated justification — surviving an env wipe — was never real.
+#
+# TWO REAL CONSEQUENCES of the merge, both of which bit during the 2026-09-09 bring-up:
+#   1. `--env` cannot UNSET a variable. Restoring a default means setting an explicit value, which
+#      is why `gas-limit VALUE=default` sends EXPERIMENTAL_GAS_LIMIT=0 (the node maps 0 ->
+#      DefaultGasLimit, 36e6, in both proposer_preferences.go:573 and
+#      validator_registration.go:288) rather than just omitting the flag.
+#   2. Kurtosis DEDUPES identical update instructions: repeating a switch with the same arguments
+#      prints "SKIPPED - This instruction has already been run in this enclave" and does nothing,
+#      so the container is not replaced and any wait-for-new-container loop will time out.
 .PHONY: fault
 fault:
 	@test -n "$(FAULT)" || { echo "Error: FAULT is required, e.g. make fault FAULT=vote-index-2 OP=5. Values: make fault-list"; exit 1; }
@@ -309,11 +334,6 @@ fault:
 		fi; \
 	fi; \
 	echo "──── Switching ssv-node-$(OP) to FAULT=$(FAULT) ────"; \
-	# --env replaces the WHOLE env var list, so if nodes.ssv.enable_traces is on for this operator, \
-	# the OTEL_EXPORTER_OTLP_TRACES_* pair set at bring-up is dropped here too (traces do not \
-	# survive a fault switch). The node still boots only because commit 86f8750 moved --config= \
-	# into the entrypoint instead of relying on this --env list; reverting that change would \
-	# silently break every switch below. \
 	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
 		--env FAULT=$(FAULT) \
 		--files "/ssv-config:ssv-config-$(OP).yaml" \
@@ -339,6 +359,82 @@ fault:
 	echo "       causes: an unknown value aborts the node's startup by design, as does a dropped config"; \
 	echo "       mount; or the switch command above genuinely failed after passing its own exit check."; \
 	echo "       Check: docker logs \$$(docker ps --filter \"label=kurtosis_service_name=ssv-node-$(OP)\" --format '{{.Names}}') | tail -40"; \
+	echo "       The pre-switch logs are in $$ARCHIVE."; \
+	exit 1
+
+# make gas-limit OP=4 VALUE=60000000   -> set one operator's MEV gas limit
+# make gas-limit OP=4 VALUE=default    -> clear it, back to the node's built-in default
+#
+# Exists for passes doc M3 §6.4/§6.5: operator 4 starts with a divergent limit so PRF-04 and
+# PRF-11 are covered from the first epoch, and step 5 then restores the default and expects that
+# operator's preferences to reach quorum again.
+#
+# Uses EXPERIMENTAL_GAS_LIMIT (env) rather than a config-file field so the switch is one command
+# with no artifact re-render; cleanenv reads env after the YAML, so env wins.
+#
+# `--env` MERGES rather than replacing (measured 2026-09-09, see the note above `fault`), so this
+# target and `fault` can safely share an operator: FAULT, EXPERIMENTAL_GAS_LIMIT and CONFIG_PATH
+# coexisted on one container in the live check. Because a merge cannot unset, VALUE=default sends
+# an explicit 0, which the node maps to DefaultGasLimit (36e6).
+.PHONY: gas-limit
+gas-limit:
+	@test -n "$(OP)" || { echo "Error: OP is required, e.g. make gas-limit OP=4 VALUE=60000000"; exit 1; }
+	@test -n "$(VALUE)" || { echo "Error: VALUE is required — an integer, or 'default' to clear it."; exit 1; }
+	@case "$(VALUE)" in default) ;; ''|*[!0-9]*) echo "Error: VALUE must be a positive integer or 'default', got '$(VALUE)'."; exit 1 ;; esac
+	@ENCLAVE_UUID=$$(kurtosis enclave inspect $(ENCLAVE_NAME) --full-uuids 2>/dev/null | awk '/^UUID:/{print $$2}'); \
+	if [ -z "$$ENCLAVE_UUID" ]; then \
+		echo "Error: enclave '$(ENCLAVE_NAME)' was not found. Nothing was archived or switched."; \
+		echo "       Check: kurtosis enclave ls"; \
+		exit 1; \
+	fi; \
+	MATCH=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$(OP)" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}} {{.ID}}'); \
+	MATCH_N=$$(printf '%s\n' "$$MATCH" | grep -c .); \
+	if [ "$$MATCH_N" -ne 1 ]; then \
+		echo "Error: expected exactly 1 running container for ssv-node-$(OP) in enclave $(ENCLAVE_NAME),"; \
+		echo "       found $$MATCH_N. Nothing was archived or switched."; \
+		exit 1; \
+	fi; \
+	CONTAINER=$$(printf '%s' "$$MATCH" | awk '{print $$1}'); \
+	PRE_SWITCH_ID=$$(printf '%s' "$$MATCH" | awk '{print $$2}'); \
+	mkdir -p $(FAULT_LOG_DIR); \
+	ARCHIVE="$(FAULT_LOG_DIR)/ssv-node-$(OP)-gaslimit-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+	echo "──── Archiving ssv-node-$(OP) logs to $$ARCHIVE ────"; \
+	docker logs "$$CONTAINER" > "$$ARCHIVE" 2>&1 || true; \
+	if ! grep -q '^{' "$$ARCHIVE"; then \
+		echo "  warning: no JSON log lines captured in $$ARCHIVE — check it by hand before relying on it."; \
+	fi; \
+	if [ "$(VALUE)" = "default" ]; then \
+		echo "──── Restoring ssv-node-$(OP) to the default gas limit (EXPERIMENTAL_GAS_LIMIT=0) ────"; \
+		kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
+			--env EXPERIMENTAL_GAS_LIMIT=0 \
+			--files "/ssv-config:ssv-config-$(OP).yaml" \
+		|| { echo "Error: the switch command failed; the container was NOT replaced. Pre-switch logs: $$ARCHIVE"; exit 1; }; \
+	else \
+		echo "──── Setting ssv-node-$(OP) EXPERIMENTAL_GAS_LIMIT=$(VALUE) ────"; \
+		kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
+			--env EXPERIMENTAL_GAS_LIMIT=$(VALUE) \
+			--files "/ssv-config:ssv-config-$(OP).yaml" \
+		|| { echo "Error: the switch command failed; the container was NOT replaced. Pre-switch logs: $$ARCHIVE"; exit 1; }; \
+	fi; \
+	DEADLINE=$$(( $$(date +%s) + $(FAULT_BANNER_TIMEOUT) )); \
+	while [ "$$(date +%s)" -lt "$$DEADLINE" ]; do \
+		MATCH=$$(docker ps --filter "label=kurtosis_service_name=ssv-node-$(OP)" --filter "label=kurtosis_enclave_uuid=$$ENCLAVE_UUID" --format '{{.Names}} {{.ID}}'); \
+		MATCH_N=$$(printf '%s\n' "$$MATCH" | grep -c .); \
+		if [ "$$MATCH_N" -ne 1 ]; then sleep 3; continue; fi; \
+		CUR_CONTAINER=$$(printf '%s' "$$MATCH" | awk '{print $$1}'); \
+		CUR_ID=$$(printf '%s' "$$MATCH" | awk '{print $$2}'); \
+		if [ "$$CUR_ID" = "$$PRE_SWITCH_ID" ]; then sleep 3; continue; fi; \
+		ACTUAL=$$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$$CUR_CONTAINER" 2>/dev/null | sed -n 's/^EXPERIMENTAL_GAS_LIMIT=//p'); \
+		if [ "$(VALUE)" = "default" ]; then \
+			if [ "$$ACTUAL" = "0" ]; then echo "──── ssv-node-$(OP) is back on the default gas limit (0 -> DefaultGasLimit) ────"; exit 0; fi; \
+		else \
+			if [ "$$ACTUAL" = "$(VALUE)" ]; then echo "──── ssv-node-$(OP) is running EXPERIMENTAL_GAS_LIMIT=$$ACTUAL ────"; exit 0; fi; \
+		fi; \
+		sleep 3; \
+	done; \
+	echo "Error: ssv-node-$(OP) did not come back with the requested gas limit within $(FAULT_BANNER_TIMEOUT)s."; \
+	echo "       Do NOT record a PRF-04 / PRF-11 verdict until the actual state is confirmed by hand:"; \
+	echo "       docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' <container> | grep GAS_LIMIT"; \
 	echo "       The pre-switch logs are in $$ARCHIVE."; \
 	exit 1
 
@@ -373,10 +469,6 @@ fault-off:
 		echo "  window that is now ending — check it by hand: $$(head -c 200 "$$ARCHIVE")"; \
 	fi; \
 	echo "──── Clearing the fault on ssv-node-$(OP) ────"; \
-	# --env replaces the WHOLE env var list, exactly as in `fault` above: if \
-	# nodes.ssv.enable_traces is on for this operator, the OTEL_EXPORTER_OTLP_TRACES_* pair set \
-	# at bring-up is dropped here too. Clearing a fault does NOT restore traces — only a fresh \
-	# bring-up does. \
 	kurtosis service update $(ENCLAVE_NAME) ssv-node-$(OP) \
 		--env FAULT=none \
 		--files "/ssv-config:ssv-config-$(OP).yaml" \

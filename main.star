@@ -231,12 +231,40 @@ def run(plan, args):
         # stream for the whole service).
         enable_traces = args["nodes"].get("ssv", {}).get("enable_traces", False)
 
+        # Per-operator MEV gas limit. Indexed by the GLOBAL operator index - the same N that
+        # appears in the `ssv-node-N` service name and that `make fault OP=N` / `make gas-limit
+        # OP=N` address, and the same index space as operator_pairs. 0 (or an absent entry) means
+        # "leave unset", so the node's built-in default applies and today's params files are
+        # behaviour-identical. Needed by passes doc M3 §6.4: operator 4 runs a divergent limit so
+        # PRF-04 and PRF-11 are covered from the first epoch, and §6.5 step 5 then restores it.
+        gas_limits = args.get("operator_gas_limits", [])
+        if type(gas_limits) != "list":
+            fail("operator_gas_limits must be a list indexed by global operator index, got {}. " .format(type(gas_limits)) +
+                 "Example for a 7-operator net with a divergent operator 4:\n" +
+                 "operator_gas_limits: [0, 0, 0, 0, 60000000, 0, 0]")
+        total_operators = anchor_node_count + ssv_node_count
+        if len(gas_limits) > total_operators:
+            fail("operator_gas_limits has {} entries but this enclave has {} operators. " .format(
+                     len(gas_limits), total_operators) +
+                 "A shorter list is fine (missing entries default to unset); a longer one is a typo. " +
+                 "Note SSV_COUNT / ANCHOR_COUNT change the operator count.")
+        for gl_i in range(0, len(gas_limits)):
+            if type(gas_limits[gl_i]) != "int" or gas_limits[gl_i] < 0:
+                fail("operator_gas_limits[{}] must be a non-negative integer, got {} ({}). " .format(
+                    gl_i, gas_limits[gl_i], type(gas_limits[gl_i])))
+
         ssv_configs = {}
         for _ in range(0, ssv_node_count):
             is_exporter = False
             config = ssv_node.generate_config(plan, node_index, topology.operators[node_index], private_keys[node_index], enr, is_exporter, args)
             service_name = "ssv-node-{}".format(node_index)
-            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image, enable_traces)
+            node_gas_limit = gas_limits[node_index] if node_index < len(gas_limits) else 0
+            if node_gas_limit > 0:
+                # Printed so "which operator ran which gas limit?" is answerable from the run log
+                # rather than reconstructed afterwards.
+                plan.print("  {} -> EXPERIMENTAL_GAS_LIMIT={} (divergent; others use the node default)".format(
+                    service_name, node_gas_limit))
+            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image, enable_traces, node_gas_limit)
             node_index += 1
 
         # Optional archive-exporter node (enabled in params-boole). Read-only: an empty operator key —
