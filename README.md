@@ -144,27 +144,31 @@ fixes it — **`docker logs <container>` is the only working read path.** Three 
 - The container printing plain-text lines from the node's own Makefile target before its JSON
   logging started — **fixed**, by exec'ing the `ssvnode` binary directly instead of going through
   `make`.
-- Kurtosis's own log-collection engine cannot read the resulting per-line JSON — **by design, and
-  not fixable here without giving something up**. The enclave-wide fluent-bit filter parses each
-  line's JSON and hoists the parsed fields to the top level. That filter is *not* a Kurtosis
-  default: it is declared in the developer's own
+- Kurtosis's own log-collection engine could not read the resulting per-line JSON — **fixed
+  2026-09-09 in the developer's Kurtosis config**. The enclave-wide fluent-bit filter is *not* a
+  Kurtosis default: it is declared in
   `~/Library/Application Support/kurtosis/kurtosis-config.yml`, under
-  `kurtosis-clusters.docker.logs-collector.{parsers,filters}` (parser `ssv_json_time`).
+  `kurtosis-clusters.docker.logs-collector.{parsers,filters}`.
 
-  It is there on purpose — hoisting the fields and honouring `time_key: time` is what makes the
-  Grafana/Loki view (`kurtosis grafloki start`) show structured, queryable fields with correct
-  per-line timestamps. The cost is that Kurtosis's own per-week file store expects an all-string
-  record, so the hoisted ints and bools break its reader and `kurtosis service logs` returns
-  nothing — with **exit code 0 and the error on stderr**, so callers that only read stdout report
-  "no logs found" instead of a failure. One collector feeds both sinks, so you cannot have a
-  structured grafloki view and a working `kurtosis service logs` from the same config. Note that
-  `Preserve_Key` alone would not resolve this: the hoisted non-string fields are what break the
-  decode, not the dropped `log` key.
+  With a **json** parser it hoisted each line's fields to the record root *with native types*
+  (`slot`:int, `count`:int, `validators`:list). Kurtosis's own per-week file store decodes stored
+  lines into a string-valued map, so any non-string value broke it and `kurtosis service logs`
+  returned nothing — with **exit code 0 and the error on stderr**, so callers that only read
+  stdout reported "no logs found" instead of a failure.
 
-Every M3 scenario-card oracle is written as a `scout.py --env mini logs query` call. Scout uses the
-broken `kurtosis service logs` path, so those oracles currently return nothing. Until scout reads
-mini logs another way — either a `docker logs` fallback or, better, pointing its existing LogQL
-backend at grafloki's Loki — translate each oracle by hand, e.g.:
+  The cause was native types, not parsing. A **`format: regex`** parser emits only its named
+  captures and **every capture is a string**, so it can still consume `time_key` — keeping the
+  node's own microsecond-precision, correctly-ordered timestamps in Loki — while leaving the record
+  all-string and readable. The config now uses parser `ssv_time_only`
+  (`regex: '"time":"(?<time>[^"]+)"'`) plus **`Preserve_Key: On`** on the filter, which is required
+  to keep the `log` string so the reader still has a message. Verified on fluent-bit 4.0.0 against
+  a real ssv-node line. Structured fields are recovered at query time in Grafana with
+  `{job="kurtosis"} | json | line_format "{{.log}}" | json`. Full reasoning and the tested
+  comparison live in ssv-scout's `docs/kurtosis-logging-options.md`.
+
+  The collector is created **per enclave**, so this only takes effect on a fresh enclave. Until it
+  is confirmed there (`kurtosis service logs <enclave> ssv-node-0 -n 5` returning lines), treat
+  `docker logs` as the reliable read path and translate oracles by hand, e.g.:
 
 ```bash
 # Scope to THIS enclave — a co-tenant enclave can run its own ssv-node-5, and reading the wrong
