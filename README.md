@@ -267,6 +267,34 @@ operator_pairs: [[0], [1], [2], [4]]  # op3 now points at pair 4, the proxy
 - Requires `make prepare-blindspot-proxy` before bring-up. See the commented example in
   `params-gloas-multibn.yaml` for the full block plus the TRN-05 passthrough call.
 
+### Network faults and CL lifecycle
+
+Shape one operator's links, or stop the beacon node it uses:
+
+```bash
+make fault-latency OP=0 MS=200              # 200 ms one-way delay, operator 0 -> its beacon node
+make fault-latency OP=0 MS=4000 TARGET=p2p  # ... -> the other operators instead
+make fault-loss    OP=2 PCT=10
+make fault-partition OP=1 TARGET=p2p        # 100% loss toward the chosen link
+make restore-net   OP=0                     # clear all shaping on one operator
+make netem-show    OP=0                      # what is actually installed
+make netem-topology                          # operator -> primary beacon node
+make stop-cl OP=3 / make start-cl OP=3       # that operator's beacon node
+make test-netem                              # unit tests, no enclave needed
+```
+
+- `TARGET` is `bn` (default), `p2p` or `all`. Only `all` shapes every egress packet; the other two
+  install a `prio` qdisc plus `u32` filters on the resolved destination addresses, so a fault on one
+  link cannot be confused with a fault on the other.
+- `tc` runs from a `nicolaka/netshoot` sidecar sharing the target's network namespace, so no image
+  needs `iproute2` and CL/EL containers are reachable too.
+- **Delay is one-way egress**: `MS=200` ≈ 200 ms RTT, not 400.
+- Applying clears the previous qdisc first, so a ladder is just repeated calls.
+- `stop-cl`/`start-cl` resolve the operator's beacon node from its rendered config and **refuse** if
+  that CL also backs another operator (`FORCE=1` overrides).
+- On Gloas profiles pass `EL_SERVICE=el-1-geth-lodestar` to `stop-el`/`start-el`, and do not use
+  `restore-el` — stock geth has no EIP-7732.
+
 ## Architecture
 
 ```

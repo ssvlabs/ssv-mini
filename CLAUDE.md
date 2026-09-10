@@ -153,6 +153,41 @@ curl -s -X POST -H "Content-Type: application/json" \
   logs on `--env mini`"). Translate any M3 scenario-card oracle written as a scout query into a
   `docker logs` grep by hand.
 
+## Network Faults (P0.4)
+
+- **Targets**: `make fault-latency OP=n MS=x`, `fault-loss OP=n PCT=x`, `fault-partition OP=n`,
+  `restore-net OP=n`, `netem-show OP=n`, `netem-topology`, `stop-cl OP=n`, `start-cl OP=n`.
+  Unit tests that need no enclave: `make test-netem`. Implementation: `scripts/netem`.
+- **`TARGET` picks the link and matters.** `bn` (default) shapes the operator → its own beacon node;
+  `p2p` shapes it → the other operators; `all` is a bare root qdisc over every egress packet. Only
+  `all` is unfiltered. Shaping everything when a scenario meant one link is what makes a
+  latency-against-convergence measurement unattributable, so state the link explicitly.
+- **`tc` comes from a `nicolaka/netshoot` sidecar** sharing the target's network namespace, not from
+  the node image — so no image carries `iproute2`, and the same path reaches CL/EL containers, which
+  an in-container install cannot (several client images ship neither apt nor tc).
+- **Delay is ONE-WAY egress.** `MS=200` gives ≈200 ms RTT, not 400. Record it as injected one-way
+  delay. Shaping the return leg would need an `ifb` redirect, deliberately not implemented.
+- **Apply is idempotent** — the root qdisc is cleared first, so a 200/500/1000 ms ladder is three
+  calls and can never stack two netem qdiscs on one interface. No `tc qdisc change` needed.
+- **`stop-cl`/`start-cl` address the OPERATOR**, resolving its beacon node from that operator's
+  rendered config (so `operator_pairs` fallbacks are honoured). They **refuse** when that CL also
+  backs another operator; `FORCE=1` overrides. The default profiles put every operator on pair 0, so
+  the guard fires there — that is deliberate, because "stop operator 3's CL" quietly taking the rest
+  of the committee with it is how a BN-outage result gets misattributed.
+- **`EL_SERVICE` has no correct default across profiles** — the service name embeds the CL it is
+  paired with, so Gloas profiles need `EL_SERVICE=el-1-geth-lodestar`. And **never run `restore-el`
+  on a Gloas enclave**: it swaps in stock geth, which has no EIP-7732; the target now refuses on a
+  gloas params file unless handed an image explicitly.
+- Verify a fault landed with `make netem-show OP=n`, and prove the scoping by pinging the shaped and
+  an unshaped host from inside the operator's namespace rather than assuming.
+
+## Running QA pass M4
+
+Full reproducible procedure, including the Docker-memory floor and the P2P pre-flight check:
+**`ssv-scout/docs/qa-glamsterdam-m4-runbook.md`**. Read it before following any
+`ssv-scout/scenarios/gloas/*.md` card — several card procedures predate this tooling and prescribe a
+root-qdisc `kurtosis service exec ... tc` command that shapes the wrong thing.
+
 ## Troubleshooting
 
 - **Kurtosis version mismatch**: `brew upgrade kurtosis-tech/tap/kurtosis-cli && kurtosis engine restart`
