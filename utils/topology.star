@@ -221,7 +221,13 @@ def _start_blindspot_proxies(plan, all_participants, validated_entries):
             ),
         )
         extra.append(struct(
-            cl_url = "http://{}:{}".format(svc.ip_address, BLINDSPOT_PORT),
+            # Address the proxy by its SERVICE NAME, not svc.ip_address. Kurtosis gives every
+            # service DNS inside the enclave, so the name resolves for the node exactly as
+            # `cl-1-lodestar-geth` does — and, unlike a bare IP, it is a valid `kurtosis service`
+            # identifier. With an IP here, tooling that reads this endpoint back out of a rendered
+            # config (scripts/netem's stop-cl/start-cl) hands `kurtosis service stop` an address
+            # and gets "No service found for identifier '172.16.0.23'".
+            cl_url = "http://{}:{}".format(entry.name, BLINDSPOT_PORT),
             el_rpc = "http://{}:{}".format(up.el_context.ip_addr, up.el_context.rpc_port_num),
             el_ws = "ws://{}:{}".format(up.el_context.ip_addr, up.el_context.ws_port_num),
         ))

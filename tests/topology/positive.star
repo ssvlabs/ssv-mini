@@ -74,4 +74,15 @@ def run(plan, args):
     v = topology.validate_blindspot_pairs([{"upstream": 0}], ["cl-4-lodestar-geth"])
     assert_eq(plan, "bs/strip-default", v.entries[0].strip, ["GLOAS_FORK_EPOCH"])
 
+    # A blind-spot pair's label must name the PROXY SERVICE, not an IP. scripts/netem reads the
+    # endpoint back out of a rendered config to drive stop-cl/start-cl, and `kurtosis service stop`
+    # rejects a bare address — verified live on 2026-09-10 as
+    # "No service found for identifier '172.16.0.23'".
+    labels_bs = LABELS_4 + ["blindspot-proxy-0 -> cl-4-lodestar-geth (strip GLOAS_FORK_EPOCH)"]
+    r = topology.resolve([[0], [1], [2], [4]], 4, labels_bs)
+    assert_eq(plan, "blindspot/label-names-the-proxy-service", r.pairs[3], [4])
+    if "blindspot-proxy-0" not in labels_bs[4]:
+        fail("blindspot label must name the proxy service so it stays a valid kurtosis identifier")
+    plan.print("  ok  blindspot/label-names-the-proxy-service")
+
     plan.print("ALL POSITIVE CASES PASSED")
