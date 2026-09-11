@@ -67,7 +67,10 @@ pre_register_validators: false
 # boot-validated end-to-end by aetheria#176). 0 (default) registers the FULL set (no split); a positive
 # count must be < the pool size so cohort D is non-empty (the full pool would be a no-op split). Only a CONTIGUOUS
 # prefix is safe: the sharesData nonce sequence is 0-based (see contract/registration/register-validators.cjs
-# and ssvlabs/ssv-mini#36). Consumed by aetheria#176's unified fork-transition suite.
+# and ssvlabs/ssv-mini#36). Consumed by aetheria#176's unified fork-transition suite. The ACTUAL split point
+# N — plus the cohort P/D pubkey partition — is published at bring-up as the `pre-registered.json` enclave
+# artifact (kurtosis files download <enclave> pre-registered.json): the shared source of truth that lets the
+# executor read N instead of re-declaring it across repos (ssvlabs/ssv-mini#53).
 pre_register_count: 0
 
 # The ethereum2-monitor (E2M) indexes SSV validator attestations and serves the

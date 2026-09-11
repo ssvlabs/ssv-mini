@@ -179,7 +179,7 @@ def run(plan, args):
         effective_count = pre_register_count if pre_register_count > 0 else constants.SSV_MANAGED_VALIDATOR_COUNT
         plan.print("Step 4/5: Pre-registering {} validator(s) on-chain — cohort P = indices [{}, {}) (pre_register_validators=true, pre_register_count={})".format(
             effective_count, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + effective_count, pre_register_count))
-        interactions.register_validators(
+        manifest_artifact = interactions.register_validators(
             plan,
             keyshare_artifact,
             constants.SSV_NETWORK_PROXY_CONTRACT,
@@ -187,6 +187,9 @@ def run(plan, args):
             genesis_constants,
             args,
         )
+        # register_validators published the actual N + cohort P/D partition as the pre-registered.json
+        # artifact (ssvlabs/ssv-mini#53); surface its download handle in the bring-up log.
+        plan.print("Step 4/5: Published split point N={} as enclave artifact '{}' (read with: kurtosis files download <enclave> {})".format(effective_count, manifest_artifact, manifest_artifact))
         plan.remove_service(constants.REGISTER_VALIDATOR_SERVICE_NAME, description="Cleaning up validator registration service")
     else:
         plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")

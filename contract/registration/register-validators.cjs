@@ -3,12 +3,16 @@
 // and bulk-registers them into a fresh cluster, collateralized with ETH via msg.value.
 // Note: v2.0.0's bulkRegisterValidator is payable and dropped the SSV-token `amount` param.
 const fs = require("fs");
+const path = require("path");
 const { ethers } = require("ethers");
 
 const RPC = process.env.LOCAL_RPC_URL;
 const KEY = process.env.LOCAL_DEPLOYER_KEY;
 const NETWORK_ADDR = process.env.SSV_NETWORK_ADDRESS;
 const KEYSHARES_FILE = process.env.KEYSHARES_FILE || "/app/keyshares/out.json";
+// Path of the split-point manifest written at the end of main(). interactions.star passes this explicitly;
+// the fallback keeps it beside the keyshares for a standalone run.
+const MANIFEST_FILE = process.env.PRE_REGISTER_MANIFEST_FILE || path.join(path.dirname(KEYSHARES_FILE), "pre-registered.json");
 
 async function main() {
   const abi = JSON.parse(fs.readFileSync("/app/abis/SSVNetwork.json", "utf8"));
@@ -70,6 +74,22 @@ async function main() {
     console.log("  Registered " + (i + batch.length) + "/" + shares.length + " validator(s)");
   }
   console.log("Registered " + shares.length + " validator(s) in batches of up to " + BATCH_SIZE);
+
+  // Publish the split point N (and the exact P⊎D pubkey partition) as a manifest so the aetheria executor
+  // reads the ACTUAL N from the enclave instead of re-declaring it in a second repo (ssvlabs/ssv-mini#53).
+  // Otherwise the only trace of N is this service's log, and the service is torn down at the end of Step 4 —
+  // an executor offset > N would then silently register nobody at position N and quietly shrink cohort D.
+  // cohortP is exactly what we registered above (shares[0, count)); cohortD is the remainder [count, pool)
+  // the executor registers. count == pool ⇒ cohortD is empty (full set, no split). interactions.star stores
+  // MANIFEST_FILE as the `pre-registered.json` enclave artifact before the service is removed.
+  const manifest = {
+    preRegisteredCount: count,
+    poolSize: all.length,
+    cohortP: shares.map((s) => s.payload.publicKey),
+    cohortD: all.slice(count).map((s) => s.payload.publicKey),
+  };
+  fs.writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2));
+  console.log("Wrote pre-registration manifest " + MANIFEST_FILE + " (N=" + count + ", pool=" + all.length + ", |D|=" + manifest.cohortD.length + ")");
 }
 
 // clusterFromReceipt reads the updated Cluster struct from the last ValidatorAdded event in a receipt, so
