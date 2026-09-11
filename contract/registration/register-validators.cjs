@@ -36,6 +36,13 @@ async function main() {
   }
   const shares = all.slice(0, count);
   const operatorIds = shares[0].payload.operatorIds;
+  // ssv-mini registers a single cluster and bulkRegisterValidator takes one operatorIds for the whole
+  // batch, so every registered share must target the same operator set. Fail loud on a mixed-cluster
+  // keyshare file instead of silently registering everyone under shares[0]'s operators.
+  const operatorIdsKey = JSON.stringify(operatorIds);
+  if (shares.some((s) => JSON.stringify(s.payload.operatorIds) !== operatorIdsKey)) {
+    throw new Error("keyshares span multiple operator sets; ssv-mini registers a single cluster (expected operatorIds " + operatorIdsKey + " for all " + shares.length + " shares)");
+  }
 
   // A single bulkRegisterValidator tx must stay under Ethereum's 128 KiB tx-size limit — each validator
   // adds ~1.5 KiB of sharesData calldata, so ~85 is the ceiling (90 validators is ~136 KiB and the node

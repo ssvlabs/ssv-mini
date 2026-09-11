@@ -100,6 +100,13 @@ def run(plan, args):
 
     if use_static_keys:
         plan.print("Step 3/5: Loading pre-computed static keys and keyshares")
+        # The committed static keyshare set is the real validator pool; SSV_MANAGED_VALIDATOR_COUNT (which the
+        # layout guard, the pre_register_count bound and the Step 4 index math all read) must mirror its size.
+        # generate-static-keys.sh keeps the two in sync — assert it so a hand-regenerated out.json fails loud
+        # here instead of silently skewing those bounds.
+        static_pool_size = len(json.decode(read_file("./static/keyshares/out.json"))["shares"])
+        if static_pool_size != constants.SSV_MANAGED_VALIDATOR_COUNT:
+            fail("static keyshare pool size ({}) != SSV_MANAGED_VALIDATOR_COUNT ({}) — regenerate with scripts/generate-static-keys.sh (updates both) or fix the constant in utils/constants.star.".format(static_pool_size, constants.SSV_MANAGED_VALIDATOR_COUNT))
         public_keys = []
         private_keys = []
         pem_artifacts = []
