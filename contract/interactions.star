@@ -45,9 +45,9 @@ def register_operators(plan, public_keys, network_address):
 # yields operators that actually run validators. Off by default because the executor registers and
 # funds its own validators. Devnet pre-registration tracked under #29.
 #
-# The manifest (preRegisteredCount N, poolSize, cohortP/cohortD pubkeys) gives the split point N an
-# enclave-visible source of truth so the aetheria executor reads the real N instead of re-declaring it
-# across repos (ssvlabs/ssv-mini#53).
+# The manifest — split point N, pool size, the cohortP/cohortD pubkey partition, and the registration context
+# cohortD depends on (ownerAddress, operatorIds, ssvNetworkAddress) — gives N an enclave-visible source of
+# truth, so the executor reads the real N and that context instead of re-declaring them (ssvlabs/ssv-mini#53).
 def register_validators(plan, keyshare_artifact, network_address, rpc, genesis_constants, args):
     # Pre-register only the first pre_register_count keyshares (P) when set (>0); the rest are left for
     # the aetheria executor to register as its own cohort (D). Default 0 → PRE_REGISTER_COUNT unset →

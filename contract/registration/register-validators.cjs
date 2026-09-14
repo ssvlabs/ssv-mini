@@ -36,12 +36,13 @@ async function main() {
   }
   const shares = all.slice(0, count);
   const operatorIds = shares[0].payload.operatorIds;
-  // ssv-mini registers a single cluster and bulkRegisterValidator takes one operatorIds for the whole
-  // batch, so every registered share must target the same operator set. Fail loud on a mixed-cluster
-  // keyshare file instead of silently registering everyone under shares[0]'s operators.
+  // bulkRegisterValidator takes one operatorIds per batch, so every share must belong to the same cluster.
+  // Validate the WHOLE pool, not just the prefix: a mixed prefix registers everyone under shares[0]'s
+  // operators, and cohortD (the tail, published below and registered by the executor under this cluster)
+  // lands as malformed ValidatorAdded events — no revert, a green run either way (ssvlabs/ssv-mini#36).
   const operatorIdsKey = JSON.stringify(operatorIds);
-  if (shares.some((s) => JSON.stringify(s.payload.operatorIds) !== operatorIdsKey)) {
-    throw new Error("keyshares span multiple operator sets; ssv-mini registers a single cluster (expected operatorIds " + operatorIdsKey + " for all " + shares.length + " shares)");
+  if (all.some((s) => JSON.stringify(s.payload.operatorIds) !== operatorIdsKey)) {
+    throw new Error("keyshares span multiple operator sets; ssv-mini registers a single cluster (expected operatorIds " + operatorIdsKey + " for all " + all.length + " shares)");
   }
 
   // A single bulkRegisterValidator tx must stay under Ethereum's 128 KiB tx-size limit — each validator
@@ -89,9 +90,19 @@ async function main() {
   // cohortP is exactly what we registered above (shares[0, count)); cohortD is the remainder [count, pool)
   // the executor registers. count == pool ⇒ cohortD is empty (full set, no split). interactions.star stores
   // MANIFEST_FILE as the `pre-registered.json` enclave artifact before the service is removed.
+  //
+  // Also publish the registration context cohortD depends on — ownerAddress, operatorIds and
+  // ssvNetworkAddress — so the executor reads them here instead of re-declaring them (the re-declaration this
+  // manifest exists to remove). If the deployer key or operator set drifts, N and the cohorts still look
+  // valid, but cohortD would sign sharesData for the wrong (owner, nonce) → malformed ValidatorAdded events
+  // (ssvlabs/ssv-mini#36). schemaVersion lets consumers tell manifest shapes apart as it grows.
   const manifest = {
+    schemaVersion: 1,
     preRegisteredCount: count,
     poolSize: all.length,
+    ownerAddress: wallet.address,
+    operatorIds: operatorIds,
+    ssvNetworkAddress: NETWORK_ADDR,
     cohortP: shares.map((s) => s.payload.publicKey),
     cohortD: all.slice(count).map((s) => s.payload.publicKey),
   };
