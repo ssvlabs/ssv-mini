@@ -31,7 +31,7 @@ network:
     # validators the SSV operators adopt (ssvlabs/aetheria orchestrator/script/insert_test_data.sql),
     # N = the SSV pool size (utils/constants.star SSV_MANAGED_VALIDATOR_COUNT). VCs run
     # [0, total validator_count*count summed over all participant groups) = [0,64); genesis deposits
-    # [0, preregistered). Keep that VC total == 64 (exactly) and preregistered_validator_count >= 64+N (main.star
+    # [0, preregistered). Keep that VC total == 64 (exactly) and preregistered_validator_count == 64+N exactly (main.star
     # asserts this by default; unsafe_skip_validator_layout_guard in params-gloas.yaml opts out for
     # standalone liveness probes), else operators would run VC-active validators -> double-sign ->
     # slashing. generate-static-keys.sh Step 4 keeps this in sync with N.
@@ -67,7 +67,11 @@ pre_register_validators: false
 # boot-validated end-to-end by aetheria#176). 0 (default) registers the FULL set (no split); a positive
 # count must be < the pool size so cohort D is non-empty (the full pool would be a no-op split). Only a CONTIGUOUS
 # prefix is safe: the sharesData nonce sequence is 0-based (see contract/registration/register-validators.cjs
-# and ssvlabs/ssv-mini#36). Consumed by aetheria#176's unified fork-transition suite.
+# and ssvlabs/ssv-mini#36). Consumed by aetheria#176's unified fork-transition suite. The ACTUAL split point
+# N — plus the cohort P/D pubkey partition and the registration context (owner, operatorIds, SSVNetwork
+# address) — is published at bring-up as the `pre-registered.json` enclave artifact (kurtosis files download
+# <enclave> pre-registered.json): the shared source of truth that lets the executor read N and that context
+# instead of re-declaring them across repos (ssvlabs/ssv-mini#53).
 pre_register_count: 0
 
 # The ethereum2-monitor (E2M) indexes SSV validator attestations and serves the

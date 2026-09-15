@@ -70,8 +70,13 @@ def run(plan, args):
             plan.print("WARNING: unsafe_skip_validator_layout_guard=true with monitor.enabled=true - the monitor FATAL-crashes after ~2min of head-stall, i.e. exactly the condition a liveness probe (ssvlabs/ssv-mini#38) is trying to observe. Set monitor.enabled: false for probe runs.")
         plan.print("WARNING: unsafe_skip_validator_layout_guard=true - skipping the 64/74 validator-layout guard (VCs run [0,{}), genesis deposits [0,{})). SAFE ONLY if no SSV-managed validators are adopted on this enclave (no pre_register, no aetheria validator suite); otherwise VC/SSV overlap -> double-sign -> slashing.".format(vc_validators, deposited_validators))
     else:
-        if vc_validators != constants.SSV_SEED_START_INDEX or deposited_validators < constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:
-            fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices [{}, {}) (must be deposited AND VC-idle) - keep total validator_count*count == {} (exactly) and preregistered_validator_count >= {}, or update the aetheria seed. Both directions are fatal: a VC total over {} overlaps the seed -> double-sign -> slashing; under it the VCs fall short of the 2/3 majority the chain needs to justify before SSV adopts -> permanent genesis-bootstrap deadlock (aetheria#176). For a standalone base-chain liveness probe with no SSV validators (ssvlabs/ssv-mini#38), set unsafe_skip_validator_layout_guard: true.".format(vc_validators, deposited_validators, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX))
+        # Exact equality, not >=: in dynamic mode (use_static_keys: false) the SSV pool is
+        # preregistered_validator_count - vc_validators, so over-provisioned deposits silently inflate it past
+        # the seed [64, 64+N) and Step 4 would publish a cohortD spilling beyond it (no revert). This pins the
+        # dynamic pool to the seed the way the static pool-size guard above already does; over-provisioned base
+        # chains use the unsafe_skip path (no SSV validators adopted), so nothing legitimate needs the head-room.
+        if vc_validators != constants.SSV_SEED_START_INDEX or deposited_validators != constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:
+            fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices [{}, {}) (must be deposited AND VC-idle) - keep total validator_count*count == {} (exactly) and preregistered_validator_count == {} (exactly - extra deposits inflate the SSV pool past the seed in dynamic mode), or update the aetheria seed. Both directions are fatal: a VC total over {} overlaps the seed -> double-sign -> slashing; under it the VCs fall short of the 2/3 majority the chain needs to justify before SSV adopts -> permanent genesis-bootstrap deadlock (aetheria#176). For a standalone base-chain liveness probe with no SSV validators (ssvlabs/ssv-mini#38), set unsafe_skip_validator_layout_guard: true.".format(vc_validators, deposited_validators, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX))
     # Validate pre_register_count (the pool-split knob) here at plan time, before the enclave is built —
     # bad input must fail OUT of the dangerous mode, not into it (failing at Step 4 leaves a half-built
     # enclave to tear down). Negative or > the pool would fall back to registering the full set (the
@@ -100,6 +105,13 @@ def run(plan, args):
 
     if use_static_keys:
         plan.print("Step 3/5: Loading pre-computed static keys and keyshares")
+        # The committed static keyshare set is the real validator pool; SSV_MANAGED_VALIDATOR_COUNT (which the
+        # layout guard, the pre_register_count bound and the Step 4 index math all read) must mirror its size.
+        # generate-static-keys.sh keeps the two in sync — assert it so a hand-regenerated out.json fails loud
+        # here instead of silently skewing those bounds.
+        static_pool_size = len(json.decode(read_file("./static/keyshares/out.json"))["shares"])
+        if static_pool_size != constants.SSV_MANAGED_VALIDATOR_COUNT:
+            fail("static keyshare pool size ({}) != SSV_MANAGED_VALIDATOR_COUNT ({}) — regenerate with scripts/generate-static-keys.sh (updates both) or fix the constant in utils/constants.star.".format(static_pool_size, constants.SSV_MANAGED_VALIDATOR_COUNT))
         public_keys = []
         private_keys = []
         pem_artifacts = []
@@ -179,7 +191,7 @@ def run(plan, args):
         effective_count = pre_register_count if pre_register_count > 0 else constants.SSV_MANAGED_VALIDATOR_COUNT
         plan.print("Step 4/5: Pre-registering {} validator(s) on-chain — cohort P = indices [{}, {}) (pre_register_validators=true, pre_register_count={})".format(
             effective_count, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + effective_count, pre_register_count))
-        interactions.register_validators(
+        manifest_artifact = interactions.register_validators(
             plan,
             keyshare_artifact,
             constants.SSV_NETWORK_PROXY_CONTRACT,
@@ -187,6 +199,10 @@ def run(plan, args):
             genesis_constants,
             args,
         )
+        # The pre-registered.json artifact register_validators just published is the authoritative source of N
+        # (ssvlabs/ssv-mini#53). Surface only its download handle — don't restate N, which the plan-time
+        # effective_count above can diverge from in dynamic mode.
+        plan.print("Step 4/5: Published the pre-registration manifest (split point N + cohort P/D) as enclave artifact '{}' (read with: kurtosis files download <enclave> {})".format(manifest_artifact, manifest_artifact))
         plan.remove_service(constants.REGISTER_VALIDATOR_SERVICE_NAME, description="Cleaning up validator registration service")
     else:
         plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
