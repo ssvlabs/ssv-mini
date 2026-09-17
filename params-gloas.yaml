@@ -149,6 +149,13 @@ nodes:
     count: 4
   anchor:
     count: 0
+  # Archive-exporter node the aetheria Gloas exporter-coverage steps read (ssvlabs/aetheria#181): it
+  # serves /v1/exporter/traces/validator + /v1/exporter/decideds for the Gloas duties (PTC_ATTESTER,
+  # PROPOSER_PREFERENCES, the two-root PROPOSER packet — ssvlabs/ssv#3045). Trace routes need an
+  # archive-mode node; a standard node serves decideds only. Singular by design — the aetheria side
+  # pins the hostname `ssv-exporter` — so this is a boolean, not a count.
+  exporter:
+    enabled: true
 
 images:
   ssv: "node/ssv"
