@@ -200,8 +200,8 @@ def run(plan, args):
             args,
         )
         # The pre-registered.json artifact register_validators just published is the authoritative source of N
-        # (ssvlabs/ssv-mini#53). Surface only its download handle — don't restate N, which the plan-time
-        # effective_count above can diverge from in dynamic mode.
+        # (ssvlabs/ssv-mini#53). Surface only its download handle, not N itself, so the artifact stays the
+        # single source of truth for the split point rather than being restated in a second place.
         plan.print("Step 4/5: Published the pre-registration manifest (split point N + cohort P/D) as enclave artifact '{}' (read with: kurtosis files download <enclave> {})".format(manifest_artifact, manifest_artifact))
         plan.remove_service(constants.REGISTER_VALIDATOR_SERVICE_NAME, description="Cleaning up validator registration service")
     else:
