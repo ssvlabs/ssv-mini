@@ -103,6 +103,9 @@ if [ -z "$SSV_MINI_REPO" ]; then
     exit 1
 fi
 
+# Image pins shared with the package (SSV_IMAGE is the tag the SSV nodes run).
+. "$SSV_MINI_REPO/constants.env"
+
 # --- Commands ---
 
 is_running() {
@@ -116,7 +119,7 @@ build_ssv_image() {
         exit 1
     fi
     echo "Building SSV image from: $SSV_REPO"
-    docker build -t node/ssv "$SSV_REPO"
+    docker build -t "$SSV_IMAGE" "$SSV_REPO"
 }
 
 cmd_start() {

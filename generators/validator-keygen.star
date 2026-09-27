@@ -1,3 +1,5 @@
+constants = import_module("../utils/constants.star")
+
 NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR = "/node-keystores"
 
 PRYSM_PASSWORD = "password"
@@ -5,7 +7,7 @@ PRYSM_PASSWORD_FILEPATH_ON_GENERATOR = "/tmp/prysm-password.txt"
 
 KEYSTORES_GENERATION_TOOL_NAME = "/app/eth2-val-tools"
 
-ETH_VAL_TOOLS_IMAGE = "protolambda/eth2-val-tools@sha256:098a46aa48e47da6450e40ac6ca32f41bc961adaf3cb8968e61de701fa7c72f5"
+ETH_VAL_TOOLS_IMAGE = constants.ETH2_VAL_TOOLS_IMAGE
 
 SUCCESSFUL_EXEC_CMD_EXIT_CODE = 0
 

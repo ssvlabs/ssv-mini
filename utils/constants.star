@@ -1,10 +1,51 @@
-SSV_TOKEN_CONTRACT = "0x6db20C530b3F96CD5ef64Da2b1b931Cb8f264009"
-SSV_OPERATORS_CONTRACT = "0x6f00cAa972723C5e1D1012cdAc385753c2AA3a93"
-SSV_CLUSTERS_CONTRACT = "0xDeC3326BE4BaDb9A1fA7Be473Ef8370dA775889a"
-SSV_NETWORK_CONTRACT = "0x015B8C864D1B6e9BACd0DD666D77590cFd4188Cb"
-SSV_NETWORK_PROXY_CONTRACT = "0xBFfF570853d97636b78ebf262af953308924D3D8"
+# The image pins and chain constants shared with the Makefile and the shell scripts live in ../constants.env,
+# the single source of truth; this module parses it and re-exports the values for the Starlark side.
+def _read_env(path):
+    values = {}
+    for raw in read_file(path).splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep or not key:
+            fail("{}: malformed line, want KEY=value: {}".format(path, raw))
+        if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+            value = value[1:-1]
+        values[key] = value
+    return values
 
-OWNER_ADDRESS ="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
+_ENV = _read_env("../constants.env")
+
+def _require(key):
+    if key not in _ENV:
+        fail("constants.env has no {} entry".format(key))
+    return _ENV[key]
+
+SSV_TOKEN_CONTRACT = _require("SSV_TOKEN_CONTRACT")
+SSV_OPERATORS_CONTRACT = _require("SSV_OPERATORS_CONTRACT")
+SSV_CLUSTERS_CONTRACT = _require("SSV_CLUSTERS_CONTRACT")
+SSV_NETWORK_CONTRACT = _require("SSV_NETWORK_CONTRACT")
+SSV_NETWORK_PROXY_CONTRACT = _require("SSV_NETWORK_PROXY_CONTRACT")
+
+OWNER_ADDRESS = _require("OWNER_ADDRESS")
+MNEMONIC = _require("MNEMONIC")
+
+# Defaults for a params file's images: block (utils.get_image).
+IMAGES = {
+    "ssv": _require("SSV_IMAGE"),
+    "anchor": _require("ANCHOR_IMAGE"),
+    "monitor": _require("MONITOR_IMAGE"),
+    "redis": _require("REDIS_IMAGE"),
+    "postgres": _require("POSTGRES_IMAGE"),
+    "deployer": _require("DEPLOYER_IMAGE"),
+}
+
+# Participant images by client type, filled in when a params file leaves el_image / cl_image unset
+# (utils.apply_network_defaults).
+DEFAULT_EL_IMAGES = {"geth": _require("GETH_IMAGE")}
+DEFAULT_CL_IMAGES = {"lighthouse": _require("LIGHTHOUSE_IMAGE")}
+
+ETH2_VAL_TOOLS_IMAGE = _require("ETH2_VAL_TOOLS_IMAGE")
 
 # The aetheria local_testnet seed: indices [SSV_SEED_START_INDEX, SSV_SEED_START_INDEX +
 # SSV_MANAGED_VALIDATOR_COUNT) are deposited-but-VC-idle validators the SSV operators adopt. These MIRROR
