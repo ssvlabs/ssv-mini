@@ -188,7 +188,7 @@ swap-el:
 .PHONY: restore-el
 restore-el:
 	@echo "Restoring $(EL_SERVICE) to default geth image..."
-	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.16.7
+	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.17.6
 	@echo "Done. $(EL_SERVICE) restored."
 
 # Stop an EL node (simulate crash)

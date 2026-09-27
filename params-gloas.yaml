@@ -8,7 +8,12 @@
 # "source beacon-chain types from go-eth2-client" repin). The devnet-6 CL computed a different
 # EIP-7688/7916 progressive-merkleization block root and rejected every §4 submit with 500
 # BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021); devnet-8 clears it — the aetheria#176 boot validated
-# the full ePBS lifecycle on this pin (§4 published, §6 CONFIRMED, CL head continuity through the fork).
+# the full ePBS lifecycle on those pins (§4 published, §6 CONFIRMED, CL head continuity through the fork).
+# 2026-09-27: lodestar re-pinned to the newest glamsterdam-devnet-8 build, which follows consensus-specs
+# v1.7.0-beta.2 while the node's Gloas types are alpha.14-era. Between the two, the Gloas SSZ containers
+# differ only in declaration syntax (the spec's SSZ-library swap) and the PTC -> PayloadTimelinessCommittee
+# type renames — same fields in the same order — so the node's block/envelope roots still match; the rest
+# is state-transition / validation / fork-choice logic. geth's pin is still the devnet-8 tag's newest build.
 # §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-8 (blocks land
 # canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
@@ -21,9 +26,9 @@
 # EXECUTION_PAYLOAD_ENVELOPE_ERROR_ALREADY_KNOWN — treated as success since ssvlabs/ssv#2923, validated
 # on this net: a (ptc),(proposer) run published 4/4 envelopes with zero submit errors. lighthouse v8.2.0
 # does NOT implement the envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root}
-# -> 404), so §6 is unreachable there — hence the Lodestar pin below (v1.43.0, digest-pinned; needs the
-# CL-agnostic EL lookup, ssvlabs/aetheria#136). Earlier Lodestar findings came from local runs with
-# cl_type swapped; the pin just makes that the default.
+# -> 404), so §6 is unreachable there — hence the Lodestar pin below (a digest-pinned devnet-8 build;
+# needs the CL-agnostic EL lookup, ssvlabs/aetheria#136). Earlier Lodestar findings came from local runs
+# with cl_type swapped; the pin just makes that the default.
 # The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
 # predates Gloas).
 #
@@ -67,12 +72,13 @@ network:
     # continuity passed); keep watching for a stall on longer runs.
     el_image: ethpandaops/geth@sha256:50fad280c7e2a2d7df835b46753c7633882824fbf545efb63c03451f910090e8
     cl_type: lodestar
-    # Digest-pinned Lodestar glamsterdam-devnet-8 (bumped from the devnet-6-era unstable-2e78647 snapshot
-    # on 2026-09-02; resolved from the moving glamsterdam-devnet-8 tag). Rationale: the node's Gloas block
-    # types now follow the devnet-8 spec, so a devnet-6 CL computed a different EIP-7688/7916 progressive-
+    # Digest-pinned Lodestar glamsterdam-devnet-8-f1b14bc, the moving glamsterdam-devnet-8 tag's newest build
+    # as of 2026-09-27 (re-pinned then from the tag's 2026-09-02 build, which had replaced the devnet-6-era
+    # unstable-2e78647 snapshot; the spec gap is covered in the header). Rationale: the node's Gloas block
+    # types follow the devnet-8 spec, so a devnet-6 CL computed a different EIP-7688/7916 progressive-
     # merkleization root and rejected every §4 submit with 500 BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021);
     # a devnet-8 CL matches the node's root. (devnet-8 lodestar retains §6 produce+publish and §5 proposer_preferences.)
-    cl_image: ethpandaops/lodestar@sha256:8bf3694f59b41b91f769e1fd8ee8a3cc1c45e3f70690458c2a49689fdc322035
+    cl_image: ethpandaops/lodestar@sha256:c5d9cfb9d93c182edc6883f58de847af18a70293ce7573259236da695ea248d1
     # VC cohort = validator_count*count = the always-on majority the chain self-justifies on while the SSV
     # pool (indices [SSV_SEED_START_INDEX, +count)) is > 1/3 of the set — must equal
     # constants.SSV_SEED_START_INDEX, the SSV seed start. Without a VC majority the chain can't justify
@@ -88,9 +94,13 @@ network:
   additional_services:
     - dora
 
-  # dora's default image can't render Gloas blocks; pin a Gloas-capable master build.
+  # dora's default image can't render Gloas blocks; pin a Gloas-capable master build. The previous pin,
+  # master-0e63023 (2026-06-30), predates devnet-8's five-list execution requests (EIP-8282): it can't
+  # decode the Gloas block bodies ("ParentExecutionRequests.Deposits: incorrect offset: first offset 20
+  # does not match expected 12"), so its indexer stalls at the fork and retries every 10 s. Master builds
+  # since the 2026-08-12 go-eth2-client / dynamic-ssz bump carry the regenerated SSZ types.
   dora_params:
-    image: ethpandaops/dora:master-0e63023
+    image: ethpandaops/dora:master-3d0d825
 
   # Pin a Gloas-aware generator build (rationale in the header).
   ethereum_genesis_generator_params:
@@ -159,7 +169,7 @@ nodes:
 
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.2.0"
+  anchor: "sigp/anchor:v1.3.1"
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"

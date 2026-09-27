@@ -4,9 +4,9 @@
 network:
   participants:
   - el_type: geth
-    el_image: ethereum/client-go:v1.16.7
+    el_image: ethereum/client-go:v1.17.6
     cl_type: lighthouse
-    cl_image: sigp/lighthouse:v8.2.1
+    cl_image: sigp/lighthouse:v8.2.2
     validator_count: 32
     count: 2
     supernode: true
@@ -67,7 +67,7 @@ nodes:
 
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.3.0"
+  anchor: "sigp/anchor:v1.3.1"
   monitor: "monitor"
   redis: "redis:7.4.2"
   postgres: "postgres:15"

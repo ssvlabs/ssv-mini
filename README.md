@@ -92,7 +92,7 @@ nodes:
 
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.2.0"  # needs to be changed to node/anchor when using local built anchor image
+  anchor: "sigp/anchor:v1.3.1"  # needs to be changed to node/anchor when using local built anchor image
 
 network:
   network_params:
