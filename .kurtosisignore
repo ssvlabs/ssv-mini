@@ -1,0 +1,9 @@
+# Paths Kurtosis must NOT upload with the package (gitignore syntax, package root).
+#
+# `make fault` archives each operator's logs here (FAULT_LOG_DIR, default .fault-logs). A full M3
+# ladder writes hundreds of MB, and `kurtosis run` uploads the whole package directory: at 376 MB the
+# upload hung after "Compressing package" and failed with EOF (ssv-scout errata #304, 2026-09-28).
+.fault-logs/
+.params.generated.yaml
+.git/
+.idea/
