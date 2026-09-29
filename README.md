@@ -55,7 +55,7 @@ make help
 |---------|-------------|
 | `make run` | Start testnet (default: Fulu at genesis) |
 | `make run-boole` | Start with Boole fork at epoch 3 |
-| `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 (devnet-6 images) |
+| `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 |
 | `make reset` | Clean + restart from genesis |
 | `make show` | Show running services and ports |
 | `make logs` | Tail ssv-node-0 logs (`SERVICE=ssv-node-1` for others) |

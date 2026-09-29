@@ -256,7 +256,7 @@ help:
 	@echo "  make run                             Default: Fulu at genesis"
 	@echo "  make run-boole                       Boole fork, epoch 3 (BOOLE_FORK_EPOCH=N to retune)"
 	@echo "  make run-boole-interop               Boole fork, 2 SSV + 2 Anchor committee (cross-client interop)"
-	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune; devnet-6 images)"
+	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"

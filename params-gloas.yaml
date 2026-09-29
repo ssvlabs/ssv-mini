@@ -8,12 +8,16 @@
 # "source beacon-chain types from go-eth2-client" repin). The devnet-6 CL computed a different
 # EIP-7688/7916 progressive-merkleization block root and rejected every §4 submit with 500
 # BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021); devnet-8 clears it — the aetheria#176 boot validated
-# the full ePBS lifecycle on those pins (§4 published, §6 CONFIRMED, CL head continuity through the fork).
+# the full ePBS lifecycle on the 2026-09-02 pins (§4 published, §6 CONFIRMED, CL head continuity
+# through the fork).
 # 2026-09-27: lodestar re-pinned to the newest glamsterdam-devnet-8 build, which follows consensus-specs
 # v1.7.0-beta.2 while the node's Gloas types are alpha.14-era. Between the two, the Gloas SSZ containers
 # differ only in declaration syntax (the spec's SSZ-library swap) and the PTC -> PayloadTimelinessCommittee
 # type renames — same fields in the same order — so the node's block/envelope roots still match; the rest
 # is state-transition / validation / fork-choice logic. geth's pin is still the devnet-8 tag's newest build.
+# 2026-09-28: validated on four max-scale aetheria (glamsterdam-fork) runs with this lodestar and dora (3000
+# SSV validators; 4 nodes and 3 of 4): every graded §4 block landed with a full §6 payload, the CL head
+# advanced through the fork, and dora indexed the Gloas blocks without a decode error.
 # §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-8 (blocks land
 # canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
 # three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
