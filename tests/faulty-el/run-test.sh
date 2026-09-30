@@ -27,7 +27,8 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENCLAVE_NAME="localnet"
 PROXY_SERVICE="faulty-el-proxy"
 PROXY_IMAGE="faulty-el-proxy"
-SSV_CONTRACT="0xBFfF570853d97636b78ebf262af953308924D3D8"
+source "$PROJECT_DIR/constants.env"
+SSV_CONTRACT="$SSV_NETWORK_PROXY_CONTRACT"
 
 cd "$PROJECT_DIR"
 

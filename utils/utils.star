@@ -2,9 +2,9 @@ constants = import_module("constants.star")
 
 # Image utility functions
 def get_image(args, image_name):
-    """Get image name from configuration, with fallback to default"""
+    """Get an image from the params file's images: block, falling back to its constants.env pin"""
     images = args.get("images", {})
-    return images.get(image_name, "")
+    return images.get(image_name, constants.IMAGES[image_name])
 
 def get_ssv_image(args):
     """Get SSV node image"""
@@ -35,6 +35,31 @@ def get_deployer_image_spec(args):
         build_file="Dockerfile.contract",
     )
 
+def apply_network_defaults(network_args, use_static_keys):
+    """Fill the constants.env defaults into the ethereum-package args and return a copy: each participant's
+    el_image / cl_image (by client type, when unset) and the genesis validator mnemonic."""
+    network_args = dict(network_args)
+    participants = []
+    for participant in network_args["participants"]:
+        participant = dict(participant)
+        # ethereum-package's own client-type defaults, so an omitted type still gets the pinned image.
+        el_type = participant.get("el_type", "geth")
+        cl_type = participant.get("cl_type", "lighthouse")
+        if not participant.get("el_image") and el_type in constants.DEFAULT_EL_IMAGES:
+            participant["el_image"] = constants.DEFAULT_EL_IMAGES[el_type]
+        if not participant.get("cl_image") and cl_type in constants.DEFAULT_CL_IMAGES:
+            participant["cl_image"] = constants.DEFAULT_CL_IMAGES[cl_type]
+        participants.append(participant)
+    network_args["participants"] = participants
+
+    network_params = dict(network_args["network_params"])
+    mnemonic = network_params.get("preregistered_validator_keys_mnemonic", constants.MNEMONIC)
+    if use_static_keys and mnemonic != constants.MNEMONIC:
+        fail("network_params.preregistered_validator_keys_mnemonic differs from constants.env's MNEMONIC, which the static keys are derived from. Drop the override, set use_static_keys: false, or change MNEMONIC and regenerate the keys (make generate-keys).")
+    network_params["preregistered_validator_keys_mnemonic"] = mnemonic
+    network_args["network_params"] = network_params
+    return network_args
+
 def get_network_attributes(all_participants):
     el_context = all_participants[0].el_context
     el_service_name = el_context.service_name
@@ -63,12 +88,15 @@ def anchor_testnet_artifact(plan, args):
         artifact_names = [
             "el_cl_genesis_data",
             plan.upload_files(base_path + "/ssv_boot_enr.yaml"),
-            plan.upload_files(base_path + "/ssv_contract_address.txt"),
             plan.upload_files(base_path + "/ssv_contract_block.txt"),
             plan.upload_files(base_path + "/ssv_domain_type.txt"),
             plan.upload_files(base_path + "/ssv_network_name.txt"),
             plan.render_templates(
                 {
+                    "ssv_contract_address.txt": struct(
+                        template="{{ .Address }}",
+                        data={"Address": constants.SSV_NETWORK_PROXY_CONTRACT},
+                    ),
                     "ssv_fork_schedule.yaml": struct(
                         template=read_file(base_path + "/ssv_fork_schedule.yaml"),
                         data = {

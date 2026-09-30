@@ -171,10 +171,7 @@ nodes:
   exporter:
     enabled: true
 
-images:
-  ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.3.1"
-  monitor: "monitor"
-  redis: "redis:7.4.2"
-  postgres: "postgres:15"
-  deployer: "localssv/ssv-network"
+# Service images default to the pins in constants.env. Override one per network with an images: block
+# (keys: ssv, anchor, monitor, redis, postgres, deployer), e.g. for a local `make prepare-anchor` build:
+# images:
+#   anchor: "node/anchor"

@@ -49,6 +49,8 @@ cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
 
 ### Configuration
 
+Image pins and shared chain constants (genesis mnemonic, validator owner, SSV contract addresses) live in `constants.env`, the single source of truth that the Starlark package (`utils/constants.star`), the Makefile and the scripts all read. Bump an image there once and every network picks it up.
+
 Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
@@ -58,7 +60,7 @@ Network configuration is controlled via `params.yaml`:
 - `boole_epoch`: Boole fork activation epoch
 - `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
 - `monitor.enabled`: Enable monitoring stack
-- `images.*`: Docker image overrides
+- `images.*`: per-network overrides of the service images pinned in `constants.env`; a participant's `el_image` / `cl_image` likewise overrides the constants.env default for its client type
 
 Make-level overrides (substituted into a generated copy of `PARAMS_FILE`, sources untouched):
 - `GLOAS_FORK_EPOCH=N`: retune the ePBS fork epoch (gloas params only)
@@ -89,7 +91,8 @@ make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDAT
 - `generators/`: `operator-keygen.star`, `validator-keygen.star`, `keysplit.star`
 - `blockchain/`: `blocks.star` — block/epoch wait helpers
 - `monitor/`: PostgreSQL + Redis + monitor daemon/API
-- `utils/`: Constants, image helpers
+- `utils/`: Constants (parsed from `constants.env`), image helpers
+- `constants.env`: Image pins + shared chain constants, read by Starlark, the Makefile and the scripts
 - `static/`: Pre-computed operator keys + keyshares (committed to repo)
 - `scripts/`: `ssv-mini` CLI, `generate-static-keys.sh`, shell helpers
 
