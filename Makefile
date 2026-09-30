@@ -188,7 +188,7 @@ swap-el:
 .PHONY: restore-el
 restore-el:
 	@echo "Restoring $(EL_SERVICE) to default geth image..."
-	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.16.7
+	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.17.6
 	@echo "Done. $(EL_SERVICE) restored."
 
 # Stop an EL node (simulate crash)
@@ -256,7 +256,7 @@ help:
 	@echo "  make run                             Default: Fulu at genesis"
 	@echo "  make run-boole                       Boole fork, epoch 3 (BOOLE_FORK_EPOCH=N to retune)"
 	@echo "  make run-boole-interop               Boole fork, 2 SSV + 2 Anchor committee (cross-client interop)"
-	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune; devnet-6 images)"
+	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune)"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"

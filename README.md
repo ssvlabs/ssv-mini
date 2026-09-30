@@ -55,7 +55,7 @@ make help
 |---------|-------------|
 | `make run` | Start testnet (default: Fulu at genesis) |
 | `make run-boole` | Start with Boole fork at epoch 3 |
-| `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 (devnet-6 images) |
+| `make run-gloas` | Start with Gloas/ePBS (EIP-7732) fork at epoch 2 |
 | `make reset` | Clean + restart from genesis |
 | `make show` | Show running services and ports |
 | `make logs` | Tail ssv-node-0 logs (`SERVICE=ssv-node-1` for others) |
@@ -92,7 +92,7 @@ nodes:
 
 images:
   ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.2.0"  # needs to be changed to node/anchor when using local built anchor image
+  anchor: "sigp/anchor:v1.3.1"  # needs to be changed to node/anchor when using local built anchor image
 
 network:
   network_params:
@@ -106,7 +106,7 @@ use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
 - `params-boole.yaml` — Alan→Boole fork transitions; needs `SSV_COMMIT=integration/boole-convergence make prepare`
-- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
+- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-8 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml
