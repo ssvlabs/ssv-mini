@@ -20,7 +20,7 @@ def start(plan, image):
                 )
             },
             files={
-                "/docker-entrypoint-initdb.d": plan.upload_files("schema.sql"),
+                "/docker-entrypoint-initdb.d": plan.upload_files("schema.sql", description="Uploading monitor database schema"),
             }
         ),
     )

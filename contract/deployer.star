@@ -16,7 +16,7 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
             },
             files={
                 # ethers registration scripts (register_operators runs in this service).
-                "/app/registration": plan.upload_files("./registration"),
+                "/app/registration": plan.upload_files("./registration", description="Uploading registration scripts"),
             },
         ),
         description="Starting SSV contract deployer (ssv-network v2.0.0)",
@@ -53,4 +53,4 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
         recipe=ExecRecipe(command=["node", "-e", addr_check]),
         description="Assert deployed proxy + token == constants.env (fail-fast on drift)",
     )
-    plan.verify(value=deployed["code"], assertion="==", target_value=0)
+    plan.verify(value=deployed["code"], assertion="==", target_value=0, description="Verifying the deployed addresses match constants.env")
