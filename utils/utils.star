@@ -3,8 +3,9 @@ constants = import_module("constants.star")
 # Image utility functions
 def get_image(args, image_name):
     """Get an image from the params file's images: block, falling back to its constants.env pin"""
-    images = args.get("images", {})
-    return images.get(image_name, constants.IMAGES[image_name])
+    # `or`, not a .get default: a bare `images:` (YAML null) or an empty entry falls back to the pin too.
+    images = args.get("images") or {}
+    return images.get(image_name) or constants.IMAGES[image_name]
 
 def get_ssv_image(args):
     """Get SSV node image"""
@@ -36,8 +37,9 @@ def get_deployer_image_spec(args):
     )
 
 def apply_network_defaults(network_args, use_static_keys):
-    """Fill the constants.env defaults into the ethereum-package args and return a copy: each participant's
-    el_image / cl_image (by client type, when unset) and the genesis validator mnemonic."""
+    """Return a copy of the ethereum-package args with the constants.env defaults filled in: each participant's
+    el_image / cl_image (by client type, when unset) and the genesis validator mnemonic, which a static-keys run
+    must not override (the static keys derive from it)."""
     network_args = dict(network_args)
     participants = []
     for participant in network_args["participants"]:
@@ -53,7 +55,7 @@ def apply_network_defaults(network_args, use_static_keys):
     network_args["participants"] = participants
 
     network_params = dict(network_args["network_params"])
-    mnemonic = network_params.get("preregistered_validator_keys_mnemonic", constants.MNEMONIC)
+    mnemonic = network_params.get("preregistered_validator_keys_mnemonic") or constants.MNEMONIC
     if use_static_keys and mnemonic != constants.MNEMONIC:
         fail("network_params.preregistered_validator_keys_mnemonic differs from constants.env's MNEMONIC, which the static keys are derived from. Drop the override, set use_static_keys: false, or change MNEMONIC and regenerate the keys (make generate-keys).")
     network_params["preregistered_validator_keys_mnemonic"] = mnemonic

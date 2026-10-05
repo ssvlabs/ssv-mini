@@ -92,8 +92,8 @@ nodes:
   anchor:
     count: 0      # Anchor consensus client nodes
 
-images:                   # optional: per-network overrides of the constants.env images
-  anchor: "node/anchor"   # e.g. a local `make prepare-anchor` build
+# images:                 # optional: per-network overrides of the constants.env images
+#   anchor: "node/anchor" # e.g. a local `make prepare-anchor` build
 
 network:
   network_params:

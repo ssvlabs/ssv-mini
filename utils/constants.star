@@ -1,16 +1,34 @@
 # The image pins and chain constants shared with the Makefile and the shell scripts live in ../constants.env,
 # the single source of truth; this module parses it and re-exports the values for the Starlark side.
+
+_ALNUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+_KEY_CHARS = _ALNUM + "_"
+_VALUE_PUNCT = "_-.:/@"
+
+def _only(s, allowed):
+    for c in s.elems():
+        if c not in allowed:
+            return False
+    return True
+
 def _read_env(path):
+    """Parse constants.env, failing on any line that bash, make and this parser would read differently, so
+    the three consumers can't silently disagree. Its header documents the accepted syntax."""
     values = {}
     for raw in read_file(path).splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
+        if raw.rstrip() != raw:
+            fail("{}: trailing whitespace, which make and bash read differently: {}".format(path, repr(raw)))
         key, sep, value = line.partition("=")
-        if not sep or not key:
-            fail("{}: malformed line, want KEY=value: {}".format(path, raw))
-        if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+        if not sep or not key or not _only(key, _KEY_CHARS) or key[0].isdigit():
+            fail("{}: malformed line, want KEY=value with a KEY of letters, digits and _: {}".format(path, raw))
+        quoted = len(value) >= 2 and value.startswith('"') and value.endswith('"')
+        if quoted:
             value = value[1:-1]
+        if not _only(value, _ALNUM + _VALUE_PUNCT + (" " if quoted else "")):
+            fail("{}: {}'s value must be letters, digits and {} only, double-quoted if it also has spaces, so bash, make and Starlark read it alike: {}".format(path, key, _VALUE_PUNCT, raw))
         values[key] = value
     return values
 
@@ -50,11 +68,11 @@ ETH2_VAL_TOOLS_IMAGE = _require("ETH2_VAL_TOOLS_IMAGE")
 # The aetheria local_testnet seed: indices [SSV_SEED_START_INDEX, SSV_SEED_START_INDEX +
 # SSV_MANAGED_VALIDATOR_COUNT) are deposited-but-VC-idle validators the SSV operators adopt. These MIRROR
 # static/keyshares/out.json and the external aetheria seed (ssvlabs/aetheria .../insert_test_data.sql).
-# SSV_MANAGED_VALIDATOR_COUNT is set by scripts/generate-static-keys.sh (Step 4) from SSV_VALIDATOR_COUNT
-# when the keyshares are (re)generated — to scale the pool, run that script with SSV_VALIDATOR_COUNT=N and
+# scripts/generate-static-keys.sh (Step 4) sets both, from CL_VALIDATOR_START / SSV_VALIDATOR_COUNT, when it
+# (re)generates the keyshares — to scale the pool, run that script with SSV_VALIDATOR_COUNT=N and
 # regenerate the aetheria seed to the same N. main.star's validator-layout guard reads these.
 SSV_SEED_START_INDEX = 64         # first deposited-but-VC-idle validator index; VCs must stay in [0, this)
-SSV_MANAGED_VALIDATOR_COUNT = 10  # SSV-adopted validators, indices [64, 64 + this); set by generate-static-keys.sh
+SSV_MANAGED_VALIDATOR_COUNT = 10  # SSV-adopted validators, indices [SSV_SEED_START_INDEX, +this)
 
 # Default boole_epoch when a params file leaves it unset — a far-future epoch that keeps the SSV Boole
 # fork dormant for any real run, shared by the SSV (node.star) and Anchor (utils.star) config renderers
