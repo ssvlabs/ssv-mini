@@ -84,7 +84,7 @@ network:
     # a devnet-8 CL matches the node's root. (devnet-8 lodestar retains §6 produce+publish and §5 proposer_preferences.)
     cl_image: ethpandaops/lodestar@sha256:c5d9cfb9d93c182edc6883f58de847af18a70293ce7573259236da695ea248d1
     # VC cohort = validator_count*count = the always-on majority the chain self-justifies on while the SSV
-    # pool (indices [SSV_SEED_START_INDEX, +count)) is > 1/3 of the set — must equal
+    # pool (indices [SSV_SEED_START_INDEX, +SSV_MANAGED_VALIDATOR_COUNT)) is > 1/3 of the set — must equal
     # constants.SSV_SEED_START_INDEX, the SSV seed start. Without a VC majority the chain can't justify
     # before SSV adopts, and SSV's slashing protection (adoption-epoch highest-source vs the stuck source=0)
     # then refuses every attestation as a surround vote — a permanent genesis-bootstrap deadlock
