@@ -37,12 +37,13 @@ def run(plan, args):
     # The params file's network block, with the constants.env defaults (EL/CL images, genesis mnemonic) filled in.
     network_args = utils.apply_network_defaults(args["network"], use_static_keys)
 
-    # Guard the aetheria local_testnet seed layout: it adopts deposited-but-VC-idle validators at
-    # indices [64, 64+SSV_MANAGED_VALIDATOR_COUNT) (ssvlabs/aetheria orchestrator/script/insert_test_data.sql). VCs run
+    # Guard the aetheria local_testnet seed layout (ssvlabs/aetheria orchestrator/script/insert_test_data.sql).
+    # The seed is the set of deposited-but-VC-idle validators the SSV operators adopt, at indices
+    # [SSV_SEED_START_INDEX, +SSV_MANAGED_VALIDATOR_COUNT) ([64, 74) by default). VCs run
     # [0, total validator_count*count over all participants); genesis deposits [0, preregistered_validator_count).
-    # If VC coverage reaches 64 the SSV operators would run VC-active validators -> double-sign -> slashing.
+    # If VC coverage reaches the seed, the SSV operators would run VC-active validators -> double-sign -> slashing.
     # Sum over ALL participant groups (not just [0]): validators are assigned sequentially, so adding a
-    # second group (e.g. EL/CL diversity) would extend coverage and could silently reach index 64. Fail on
+    # second group (e.g. EL/CL diversity) would extend coverage and could silently reach the seed. Fail on
     # drift by default; unsafe_skip_validator_layout_guard opts out for a standalone liveness probe (below).
     vc_validators = 0
     for p in network_args["participants"]:
@@ -52,17 +53,17 @@ def run(plan, args):
     # else a validator client would run undeposited keys.
     if deposited_validators < vc_validators:
         fail("preregistered_validator_count ({}) must be >= total VC validators ({}) - otherwise validator clients run undeposited keys.".format(deposited_validators, vc_validators))
-    # unsafe_skip_validator_layout_guard opts out of the strict 64/74 guard for a STANDALONE base-chain
+    # unsafe_skip_validator_layout_guard opts out of the exact-layout check for a STANDALONE base-chain
     # liveness probe (ssvlabs/ssv-mini#38): a bare `kurtosis run` with pre_register_validators: false and
     # NO aetheria executor leaves the SSV nodes adopting zero beacon validators (Step 4 skipped; keyshares
-    # never reach the nodes), so raising validator_count past 64 to test post-Gloas committee/PTC liveness
-    # is safe. Combining it with pre_register_validators: true is rejected below (that half of the contract
-    # is detectable in-repo). The aetheria-executor half can't be detected here, so the caller MUST NOT set
-    # the flag on an enclave an executor's (event)/(ptc)/(proposer)/(p2p) suite registers validators
-    # against, else the extra VCs overlap the seed at [64, 64+SSV_MANAGED_VALIDATOR_COUNT) and double-sign -> slashing.
+    # never reach the nodes), so raising the VC total past the seed start to test post-Gloas committee/PTC
+    # liveness is safe. Combining it with pre_register_validators: true is rejected below (that half of the
+    # contract is detectable in-repo). The aetheria-executor half can't be detected here, so the caller MUST
+    # NOT set the flag on an enclave an executor's (event)/(ptc)/(proposer)/(p2p) suite registers validators
+    # against, else the extra VCs overlap the seed and double-sign -> slashing.
     if args.get("unsafe_skip_validator_layout_guard", False):
-        # Enforce the detectable half of the flag's contract: pre_register_validators adopts the seed at
-        # [64, 64+SSV_MANAGED_VALIDATOR_COUNT), contradicting skip's "no SSV validators" premise, and a >64 VC set would overlap it ->
+        # Enforce the detectable half of the flag's contract: pre_register_validators adopts the seed,
+        # contradicting skip's "no SSV validators" premise, and a VC set past the seed start would overlap it ->
         # double-sign. (The external-executor half can't be detected in-repo - still caller's responsibility.)
         if args.get("pre_register_validators", False):
             fail("unsafe_skip_validator_layout_guard is incompatible with pre_register_validators: true - pre-registration makes the SSV operators run the seed at indices [{}, {}), so a VC set over {} would overlap them -> double-sign -> slashing. The skip flag is for bare liveness probes with no SSV validators; drop one of the two.".format(constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX))
@@ -70,11 +71,11 @@ def run(plan, args):
         # observes - so warn (not fail: monitor-on does not affect the beacon-API head-slot evidence).
         if args["monitor"]["enabled"]:
             plan.print("WARNING: unsafe_skip_validator_layout_guard=true with monitor.enabled=true - the monitor FATAL-crashes after ~2min of head-stall, i.e. exactly the condition a liveness probe (ssvlabs/ssv-mini#38) is trying to observe. Set monitor.enabled: false for probe runs.")
-        plan.print("WARNING: unsafe_skip_validator_layout_guard=true - skipping the 64/74 validator-layout guard (VCs run [0,{}), genesis deposits [0,{})). SAFE ONLY if no SSV-managed validators are adopted on this enclave (no pre_register, no aetheria validator suite); otherwise VC/SSV overlap -> double-sign -> slashing.".format(vc_validators, deposited_validators))
+        plan.print("WARNING: unsafe_skip_validator_layout_guard=true - skipping the validator-layout guard (VCs run [0,{}), genesis deposits [0,{})). SAFE ONLY if no SSV-managed validators are adopted on this enclave (no pre_register, no aetheria validator suite); otherwise VC/SSV overlap -> double-sign -> slashing.".format(vc_validators, deposited_validators))
     else:
         # Exact equality, not >=: in dynamic mode (use_static_keys: false) the SSV pool is
         # preregistered_validator_count - vc_validators, so over-provisioned deposits silently inflate it past
-        # the seed [64, 64+N) and Step 4 would publish a cohortD spilling beyond it (no revert). This pins the
+        # the seed and Step 4 would publish a cohortD spilling beyond it (no revert). This pins the
         # dynamic pool to the seed the way the static pool-size guard above already does; over-provisioned base
         # chains use the unsafe_skip path (no SSV validators adopted), so nothing legitimate needs the head-room.
         if vc_validators != constants.SSV_SEED_START_INDEX or deposited_validators != constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:
@@ -180,12 +181,12 @@ def run(plan, args):
     # Needed by consumers that gate CI on this testnet without the executor (e.g. sigp/anchor). This
     # is the devnet pre-registration path tracked in ssvlabs/ssv-mini#29.
     #
-    # ON-mode contract: the static keyshares occupy the validator pool at indices [64, 64+SSV_MANAGED_VALIDATOR_COUNT). Pre-registering
+    # ON-mode contract: the static keyshares occupy the seed (see the layout guard above). Pre-registering
     # the FULL set (pre_register_count unset/0) collides with the aetheria executor's own
     # validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) — both register the same pubkeys, so
     # a combined enclave reverts with ValidatorAlreadyExists; use standard (flag-off) enclaves there.
-    # pre_register_count: N registers only the first N keyshares (P = indices [64, 64+N)), leaving
-    # [64+N, 64+SSV_MANAGED_VALIDATOR_COUNT) for the executor to register as its own cohort (D) — the index-partitioned split that
+    # pre_register_count: N registers only the first N keyshares (cohort P, the seed's first N indices),
+    # leaving the rest for the executor to register as its own cohort (D) — the index-partitioned split that
     # lets pre-registration and a registering suite share one enclave (aetheria#176). register_validators
     # reads pre_register_count from args.
     if args.get("pre_register_validators", False):

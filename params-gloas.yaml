@@ -139,9 +139,9 @@ pre_register_validators: false
 # 0 (default) registers the FULL set. See params.yaml for the full semantics and the #36 prefix constraint.
 pre_register_count: 0
 
-# unsafe_skip_validator_layout_guard bypasses main.star's 64/74 validator-layout guard so a STANDALONE
-# base-chain liveness probe can run more than 64 baseline validators (ssvlabs/ssv-mini#38: does the
-# Gloas/ePBS devnet stall ~1.4 epochs past the fork because a 74-validator set gives degenerate
+# unsafe_skip_validator_layout_guard bypasses main.star's validator-layout guard so a STANDALONE
+# base-chain liveness probe can run VCs past the SSV seed start (ssvlabs/ssv-mini#38: does the
+# Gloas/ePBS devnet stall ~1.4 epochs past the fork because the default 74-validator set gives degenerate
 # attestation-committee / PTC coverage?). To use it: set this true, raise the participants'
 # validator_count (and/or count) AND preregistered_validator_count together to the new VC total (e.g.
 # validator_count: 64 x count: 2 = 128 VCs, preregistered_validator_count: 128), and set
@@ -150,7 +150,7 @@ pre_register_count: 0
 # then adopt zero beacon validators (Step 4 skipped), so the larger VC set never overlaps the SSV seed.
 # Combining with pre_register_validators: true is rejected by main.star (that half is detectable in-repo).
 # The aetheria half can't be, so do NOT set this against an executor validator-registering suite
-# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap the SSV seed [64, 64+N) -> double-sign -> slashing.
+# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap the SSV seed -> double-sign -> slashing.
 unsafe_skip_validator_layout_guard: false
 
 monitor:

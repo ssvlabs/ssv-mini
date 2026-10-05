@@ -27,14 +27,14 @@ network:
     electra_fork_epoch: 0
     fulu_fork_epoch: 0
     perfect_peerdas_enabled: false
-    # Indices [64, 64+N) are reserved for the aetheria local_testnet seed: deposited-but-VC-idle
-    # validators the SSV operators adopt (ssvlabs/aetheria orchestrator/script/insert_test_data.sql),
-    # N = the SSV pool size (utils/constants.star SSV_MANAGED_VALIDATOR_COUNT). VCs run
-    # [0, total validator_count*count summed over all participant groups) = [0,64); genesis deposits
-    # [0, preregistered). Keep that VC total == 64 (exactly) and preregistered_validator_count == 64+N exactly (main.star
-    # asserts this by default; unsafe_skip_validator_layout_guard in params-gloas.yaml opts out for
-    # standalone liveness probes), else operators would run VC-active validators -> double-sign ->
-    # slashing. generate-static-keys.sh Step 4 keeps this in sync with N.
+    # The aetheria local_testnet seed (ssvlabs/aetheria orchestrator/script/insert_test_data.sql) is the set
+    # of deposited-but-VC-idle validators the SSV operators adopt, at indices
+    # [SSV_SEED_START_INDEX, +SSV_MANAGED_VALIDATOR_COUNT) of utils/constants.star ([64, 74) by default).
+    # VCs run [0, total validator_count*count summed over all participant groups); genesis deposits
+    # [0, preregistered). Keep the VC total == the seed start and preregistered_validator_count == the seed
+    # end, both exactly (main.star asserts this by default; unsafe_skip_validator_layout_guard in
+    # params-gloas.yaml opts out for standalone liveness probes), else operators would run VC-active
+    # validators -> double-sign -> slashing. generate-static-keys.sh Step 4 syncs preregistered_validator_count.
     preregistered_validator_count: 74
 
   port_publisher:
@@ -51,14 +51,14 @@ use_static_keys: true
 # Default false preserves the aetheria flow (its executor registers and funds its own validators and
 # expects a clean cluster). A standalone `kurtosis run` (no executor) needs this true so operators
 # actually run validators; consumers gating CI without aetheria (e.g. sigp/anchor) opt in. See #29.
-# When true, the static keyshares occupy the validator pool (indices [64, 64+N)) the executor's
+# When true, the static keyshares occupy the seed (see network_params above), which the executor's
 # validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) also register at test time, so running
 # those suites against a FULL flag-on enclave reverts with ValidatorAlreadyExists — use standard
 # (flag-off) enclaves, or partition the pool with pre_register_count below.
 pre_register_validators: false
 
 # pre_register_count partitions the static keyshare pool when pre_register_validators is true: register
-# only the first N keyshares on-chain (P = indices [64, 64+N)), leaving [64+N, 64+SSV_MANAGED_VALIDATOR_COUNT)
+# only the first N keyshares on-chain (cohort P, the seed's first N indices), leaving the rest of the seed
 # for the aetheria executor to register as its own cohort (D). This index-partitioned P⊎D split lets pre-registration and
 # a validator-registering suite share one enclave without the ValidatorAlreadyExists collision above —
 # they register disjoint pubkeys under the same owner, and D's registration continues from N on BOTH
