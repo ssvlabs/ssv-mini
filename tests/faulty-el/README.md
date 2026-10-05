@@ -23,7 +23,7 @@ SSV Node ──ws──► Faulty EL Proxy ──ws──► Geth (el-1)
 
 ```bash
 # Prerequisite: SSV image built from bloom-filter-cross-check branch
-cd ../ssv && git checkout bloom-filter-cross-check && docker build -t node/ssv .
+cd ../ssv && git checkout bloom-filter-cross-check && docker build --load -t node/ssv .
 
 # Start testnet
 cd ../ssv-mini && make run

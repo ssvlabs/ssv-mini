@@ -55,7 +55,7 @@ echo "  Testnet running. Geth at $EL1_IP"
 # ── Step 2: Build proxy ──
 echo ""
 echo "Step 2: Building faulty EL proxy..."
-docker build -t "$PROXY_IMAGE" "$SCRIPT_DIR/proxy" 2>&1 | tail -1
+docker build --load -t "$PROXY_IMAGE" "$SCRIPT_DIR/proxy" 2>&1 | tail -1
 echo "  Proxy image built."
 
 # ── Step 3: Deploy proxy ──

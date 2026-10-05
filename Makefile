@@ -128,6 +128,9 @@ restart-ssv-nodes:
 	done
 
 # ── Image preparation ────────────────────────────────────────────────
+# Every build passes --load: with a docker-container buildx builder selected (`docker buildx use ...`),
+# a plain `docker build` leaves the result in the build cache only, so the run silently reuses the
+# previous image. --load is a no-op on the default docker driver.
 
 .PHONY: prepare
 prepare: prepare-ssv
@@ -145,7 +148,7 @@ prepare-ssv:
 	@cd ../ssv && git fetch origin --tags --force && \
 		( git checkout --detach "origin/$(SSV_COMMIT)" 2>/dev/null || git checkout --detach "$(SSV_COMMIT)" )
 	@echo "Building SSV image..."
-	@cd ../ssv && docker build -t $(SSV_IMAGE) .
+	@cd ../ssv && docker build --load -t $(SSV_IMAGE) .
 
 # prepare-anchor builds node/anchor at the FRESHEST commit for ANCHOR_COMMIT
 # (branch, tag, or commit). Same detach-at-origin pattern as prepare-ssv.
@@ -159,7 +162,7 @@ prepare-anchor:
 	@cd ../anchor && git fetch origin --tags --force && \
 		( git checkout --detach "origin/$(ANCHOR_COMMIT)" 2>/dev/null || git checkout --detach "$(ANCHOR_COMMIT)" )
 	@echo "Building Anchor image..."
-	@cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
+	@cd ../anchor && docker build --load -f Dockerfile.devnet -t node/anchor .
 
 .PHONY: prepare-monitor
 prepare-monitor:
@@ -169,7 +172,7 @@ prepare-monitor:
 	fi
 	@cd ../ethereum2-monitor && git fetch origin && git checkout origin/main
 	@echo "Building Monitor image..."
-	@cd ../ethereum2-monitor && docker build -t $(MONITOR_IMAGE) .
+	@cd ../ethereum2-monitor && docker build --load -t $(MONITOR_IMAGE) .
 
 .PHONY: prepare-all
 prepare-all: prepare-ssv prepare-anchor prepare-monitor
