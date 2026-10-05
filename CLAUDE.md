@@ -43,8 +43,8 @@ SSV_COMMIT=main make prepare         # SSV from specific branch
 make prepare-all                     # SSV + Anchor + Monitor
 
 # Manual:
-cd ../ssv && docker build -t node/ssv .
-cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
+cd ../ssv && docker build --load -t node/ssv .
+cd ../anchor && docker build --load -f Dockerfile.devnet -t node/anchor .
 ```
 
 ### Configuration

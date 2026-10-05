@@ -29,7 +29,7 @@ make run
 ### Push code changes to a running testnet (~30s)
 
 ```bash
-cd ../ssv && docker build -t node/ssv .
+cd ../ssv && docker build --load -t node/ssv .
 cd ../ssv-mini && make restart-ssv-nodes
 ```
 
