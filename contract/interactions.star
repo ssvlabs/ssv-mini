@@ -74,7 +74,7 @@ def register_validators(plan, keyshare_artifact, network_address, rpc, genesis_c
             entrypoint=["tail", "-f", "/dev/null"],
             env_vars=env_vars,
             files={
-                "/app/registration": plan.upload_files("./registration"),
+                "/app/registration": plan.upload_files("./registration", description="Uploading registration scripts"),
                 "/app/keyshares": keyshare_artifact,
             },
         ),

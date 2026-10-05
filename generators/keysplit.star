@@ -11,7 +11,7 @@ def split_keys(plan, keystores, operator_data_artifact, network_address, owner_a
             files={
                 "/usr/local/bin/operator_data": operator_data_artifact,
                 "/usr/local/bin/keystores": keystores.files_artifact_uuid,
-                "/usr/local/bin/keysplit": plan.upload_files("../scripts/keysplit.sh")
+                "/usr/local/bin/keysplit": plan.upload_files("../scripts/keysplit.sh", description="Uploading keysplit script")
             },
             env_vars = {
                 "OWNER_ADDRESS": constants.OWNER_ADDRESS,
