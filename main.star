@@ -17,6 +17,7 @@ cluster = import_module("./nodes/cluster.star")
 def run(plan, args):
     ssv_node_count = args["nodes"]["ssv"]["count"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
+    use_static_keys = args.get("use_static_keys", True)
 
     ssv_image = utils.get_ssv_image(args)
     anchor_image = utils.get_anchor_image(args)
@@ -34,7 +35,7 @@ def run(plan, args):
     # ── Step 1: Launch Ethereum network ──
     plan.print("Step 1/5: Launching Ethereum network (EL + CL + validators)")
     # The params file's network block, with the constants.env defaults (EL/CL images, genesis mnemonic) filled in.
-    network_args = utils.apply_network_defaults(args["network"], args.get("use_static_keys", True))
+    network_args = utils.apply_network_defaults(args["network"], use_static_keys)
 
     # Guard the aetheria local_testnet seed layout: it adopts deposited-but-VC-idle validators at
     # indices [64, 64+SSV_MANAGED_VALIDATOR_COUNT) (ssvlabs/aetheria orchestrator/script/insert_test_data.sql). VCs run
@@ -101,7 +102,6 @@ def run(plan, args):
     deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
 
     # ── Step 3: Prepare operator keys and keyshares ──
-    use_static_keys = args.get("use_static_keys", True)
     number_of_keys = ssv_node_count + anchor_node_count
 
     if use_static_keys:

@@ -35,8 +35,8 @@ def _read_env(path):
 _ENV = _read_env("../constants.env")
 
 def _require(key):
-    if key not in _ENV:
-        fail("constants.env has no {} entry".format(key))
+    if not _ENV.get(key):
+        fail("constants.env needs a non-empty {} entry".format(key))
     return _ENV[key]
 
 SSV_TOKEN_CONTRACT = _require("SSV_TOKEN_CONTRACT")

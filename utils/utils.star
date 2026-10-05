@@ -89,10 +89,10 @@ def anchor_testnet_artifact(plan, args):
     config = Directory(
         artifact_names = [
             "el_cl_genesis_data",
-            plan.upload_files(base_path + "/ssv_boot_enr.yaml"),
-            plan.upload_files(base_path + "/ssv_contract_block.txt"),
-            plan.upload_files(base_path + "/ssv_domain_type.txt"),
-            plan.upload_files(base_path + "/ssv_network_name.txt"),
+            plan.upload_files(base_path + "/ssv_boot_enr.yaml", description="Uploading Anchor SSV boot ENR"),
+            plan.upload_files(base_path + "/ssv_contract_block.txt", description="Uploading Anchor SSV contract block"),
+            plan.upload_files(base_path + "/ssv_domain_type.txt", description="Uploading Anchor SSV domain type"),
+            plan.upload_files(base_path + "/ssv_network_name.txt", description="Uploading Anchor SSV network name"),
             plan.render_templates(
                 {
                     "ssv_contract_address.txt": struct(
@@ -105,7 +105,8 @@ def anchor_testnet_artifact(plan, args):
                             "BooleEpoch": args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH),
                         }
                     )
-                }
+                },
+                description="Rendering Anchor SSV contract address and fork schedule",
             )
         ]
     )
