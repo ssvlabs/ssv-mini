@@ -44,6 +44,11 @@ network:
     cl_type: lighthouse
     # Lighthouse v8.3.0-rc.0 (sigp/lighthouse:v8.3.0-rc.0), digest-pinned.
     cl_image: sigp/lighthouse@sha256:3e5f0609c74b824d3cb1049920169114d99fd7bc9082b996b3adae3d4e9ef8dc
+    # Lighthouse holds 16 events per SSE topic by default and drops the oldest for a subscriber that falls
+    # behind. A slot's PTC votes (up to 512) arrive in bursts, so the monitor lost some and read them as
+    # misses (sigp/lighthouse#10214, ssvlabs/ethereum2-monitor#593). 32x holds a full slot of votes.
+    cl_extra_params:
+      - "--http-sse-capacity-multiplier=32"
     # VC cohort = validator_count*count, which must equal the SSV seed start (SSV_SEED_START_INDEX of
     # utils/constants.star). Before SSV adopts the seed, the chain justifies on this always-on cohort alone,
     # so it needs 2/3 of the set: the SSV pool must stay < 1/3. Short of that, the chain can't justify, and
