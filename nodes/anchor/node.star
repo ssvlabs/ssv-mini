@@ -6,14 +6,12 @@ ANCHOR_METRICS_PORT = 5164
 
 # Start anchor nodes: first node starts alone (to get ENR), remaining start in parallel
 def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
-    IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
-
     # Start the first node (bootnode)
     files = get_anchor_files(plan, 0, key_pems[0], config)
     command_arr = [
         "node", "--testnet-dir", "/opt/testnet", "--beacon-nodes", cl_url,
         "--execution-rpc", el_rpc, "--execution-ws", el_ws, "--datadir", "/opt/data",
-        "--enr-address", IP_PLACEHOLDER, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
+        "--enr-address", constants.PRIVATE_IP_PLACEHOLDER, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
         "--enr-quic-port", "9101", "--port", "9100", "--discovery-port", "9100", "--quic-port", "9101",
         "--logfile-max-number", "0", "--debug-level", "debug",
         # mitigation of https://github.com/sigp/anchor/issues/765
@@ -40,7 +38,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
             cmd=command_arr,
             files=files,
             ports=metrics_ports,
-            private_ip_address_placeholder=IP_PLACEHOLDER,
+            private_ip_address_placeholder=constants.PRIVATE_IP_PLACEHOLDER,
             ready_conditions=ReadyCondition(
                 recipe=ExecRecipe(
                     command=["/bin/sh", "-c", "test -f /opt/data/network/enr.dat"],
@@ -70,7 +68,7 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
                 cmd=command_arr_with_boot,
                 files=files,
                 ports=metrics_ports,
-                private_ip_address_placeholder=IP_PLACEHOLDER,
+                private_ip_address_placeholder=constants.PRIVATE_IP_PLACEHOLDER,
             )
         plan.add_services(remaining_configs, description="Starting {} remaining Anchor nodes in parallel".format(num_nodes - 1))
 

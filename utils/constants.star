@@ -29,3 +29,7 @@ ANCHOR_CLI_SERVICE_NAME = "anchor"
 
 DEPLOYER_SERVICE_NAME = "deployer"  # kurtosis service running the contract deployer
 REGISTER_VALIDATOR_SERVICE_NAME = "register-validator"  # kurtosis service running validator pre-registration
+
+# Kurtosis replaces this with the service's own IP wherever it appears in that service's command or env vars,
+# when the ServiceConfig sets private_ip_address_placeholder to it.
+PRIVATE_IP_PLACEHOLDER = "KURTOSIS_IP_ADDR_PLACEHOLDER"
