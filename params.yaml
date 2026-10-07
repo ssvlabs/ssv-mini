@@ -10,10 +10,10 @@
 
 network:
   participants:
+  # el_image / cl_image default to constants.env's GETH_IMAGE / LIGHTHOUSE_IMAGE (main.star fills them in by
+  # client type); set them here to run a different build.
   - el_type: geth
-    el_image: ethereum/client-go:v1.17.6
     cl_type: lighthouse
-    cl_image: sigp/lighthouse:v8.2.2
     validator_count: 32
     count: 2
     supernode: true
@@ -87,10 +87,7 @@ nodes:
   anchor:
     count: 0
 
-images:
-  ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.3.1"
-  monitor: "monitor"
-  redis: "redis:7.4.2"
-  postgres: "postgres:15"
-  deployer: "localssv/ssv-network"
+# Service images default to the pins in constants.env. Override one per network with an images: block
+# (keys: ssv, anchor, monitor, redis, postgres, deployer), e.g. for a local `make prepare-anchor` build:
+# images:
+#   anchor: "node/anchor"

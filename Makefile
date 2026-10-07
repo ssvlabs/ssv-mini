@@ -8,6 +8,10 @@ ANCHOR_COMMIT?=unstable
 # payloads). Guarded with headroom by check-deps; override for tiny/large runs.
 MIN_DISK_GIB?=10
 
+# Image pins and chain constants shared with the package and the scripts (SSV_IMAGE, MONITOR_IMAGE,
+# GETH_IMAGE, ...). make keeps quotes literally, so only unquoted values are used here.
+include constants.env
+
 default: run
 
 # ── Quick start ──────────────────────────────────────────────────────
@@ -141,7 +145,7 @@ prepare-ssv:
 	@cd ../ssv && git fetch origin --tags --force && \
 		( git checkout --detach "origin/$(SSV_COMMIT)" 2>/dev/null || git checkout --detach "$(SSV_COMMIT)" )
 	@echo "Building SSV image..."
-	@cd ../ssv && docker build -t node/ssv .
+	@cd ../ssv && docker build -t $(SSV_IMAGE) .
 
 # prepare-anchor builds node/anchor at the FRESHEST commit for ANCHOR_COMMIT
 # (branch, tag, or commit). Same detach-at-origin pattern as prepare-ssv.
@@ -165,7 +169,7 @@ prepare-monitor:
 	fi
 	@cd ../ethereum2-monitor && git fetch origin && git checkout origin/main
 	@echo "Building Monitor image..."
-	@cd ../ethereum2-monitor && docker build -t monitor .
+	@cd ../ethereum2-monitor && docker build -t $(MONITOR_IMAGE) .
 
 .PHONY: prepare-all
 prepare-all: prepare-ssv prepare-anchor prepare-monitor
@@ -188,7 +192,7 @@ swap-el:
 .PHONY: restore-el
 restore-el:
 	@echo "Restoring $(EL_SERVICE) to default geth image..."
-	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image ethereum/client-go:v1.17.6
+	kurtosis service update $(ENCLAVE_NAME) $(EL_SERVICE) --image $(GETH_IMAGE)
 	@echo "Done. $(EL_SERVICE) restored."
 
 # Stop an EL node (simulate crash)

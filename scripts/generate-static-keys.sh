@@ -6,8 +6,10 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 STATIC_DIR="$PROJECT_DIR/static"
 WORK_DIR=$(mktemp -d)
 
-# Configuration — must match params.yaml and ethereum-package defaults
-MNEMONIC="giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"
+# MNEMONIC, OWNER_ADDRESS, KEYGEN_ANCHOR_IMAGE and ETH2_VAL_TOOLS_IMAGE come from constants.env, the single
+# source of truth the Starlark side reads too, so the generated keys match what main.star deploys.
+source "$PROJECT_DIR/constants.env"
+
 # The SSV seed layout, both env-overridable to scale the pool (ssvlabs/aetheria#176). SSV_VALIDATOR_COUNT
 # is the pool size (keyshares for indices [START, START+N)); CL_VALIDATOR_START is the VC total = the seed
 # start index, which must equal the genesis VC cohort (params validator_count*count) — scale it WITH the
@@ -18,10 +20,6 @@ MNEMONIC="giant issue aisle success illegal bike spike question tent bar rely ar
 CL_VALIDATOR_START=${CL_VALIDATOR_START:-64}     # VC total = SSV seed start index
 SSV_VALIDATOR_COUNT=${SSV_VALIDATOR_COUNT:-10}   # SSV pool size, indices [CL_VALIDATOR_START, +count)
 NUM_OPERATORS=4
-OWNER_ADDRESS="0xe25583099ba105d9ec0a67f5ae86d90e50036425"
-
-ANCHOR_IMAGE="sigp/anchor:v1.2.0"
-ETH2_VAL_TOOLS_IMAGE="protolambda/eth2-val-tools@sha256:098a46aa48e47da6450e40ac6ca32f41bc961adaf3cb8968e61de701fa7c72f5"
 
 trap "rm -rf $WORK_DIR" EXIT
 
@@ -55,7 +53,7 @@ done
 
 docker run --rm --entrypoint="" \
     -v "$WORK_DIR/keys:/keys" \
-    "$ANCHOR_IMAGE" \
+    "$KEYGEN_ANCHOR_IMAGE" \
     sh -c "
         for i in \$(seq 0 $((NUM_OPERATORS - 1))); do
             anchor keygen --force --datadir /tmp/anchor
@@ -94,7 +92,7 @@ docker run --rm --entrypoint="" \
     -v "$WORK_DIR/operator_data.json:/operator_data.json:ro" \
     -v "$STATIC_DIR/keyshares:/output" \
     -e OWNER_ADDRESS="$OWNER_ADDRESS" \
-    "$ANCHOR_IMAGE" \
+    "$KEYGEN_ANCHOR_IMAGE" \
     sh -c '
         apt-get update -qq && apt-get install -y -qq --no-install-recommends jq >/dev/null 2>&1
 

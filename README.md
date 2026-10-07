@@ -81,6 +81,8 @@ Use `EL_SERVICE=el-2-geth-lighthouse` to target the second EL node.
 
 ## Configuration
 
+Image pins and shared chain constants (genesis mnemonic, validator owner, SSV contract addresses) live in [`constants.env`](constants.env), the single source of truth that the Starlark package, the Makefile and the scripts all read. Bump an image there once and every network picks it up.
+
 Edit `params.yaml` to customize the network:
 
 ```yaml
@@ -90,9 +92,8 @@ nodes:
   anchor:
     count: 0      # Anchor consensus client nodes
 
-images:
-  ssv: "node/ssv"
-  anchor: "sigp/anchor:v1.3.1"  # needs to be changed to node/anchor when using local built anchor image
+# images:                 # optional: per-network overrides of the constants.env images
+#   anchor: "node/anchor" # e.g. a local `make prepare-anchor` build
 
 network:
   network_params:

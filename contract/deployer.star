@@ -30,8 +30,8 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
         description="Deploying SSV contracts (ssv-network v2.0.0, hardhat deploy-fresh)",
     )
 
-    # Assert the deployed network proxy + token equal constants.star, failing the run on drift.
-    # Registration (interactions.star) targets the hardcoded constants.SSV_NETWORK_PROXY_CONTRACT and
+    # Assert the deployed network proxy + token equal the constants.env pins, failing the run on drift.
+    # Registration (interactions.star) targets the pinned constants.SSV_NETWORK_PROXY_CONTRACT and
     # the aetheria seed pins these too, yet nothing enforced it — a future ssv-network/hardhat change
     # that shifts an address would silently register operators against the wrong/empty contract.
     # kurtosis ExecRecipe `extract` treats a command's stdout as an opaque string (it can't field-access
@@ -46,11 +46,11 @@ def deploy(plan, el, genesis_constants, deployer_image_spec):
         'if(r.ssvNetworkProxy!==wantProxy||r.ssvToken!==wantToken){' +
         'console.error("DEPLOY ADDRESS DRIFT: proxy="+r.ssvNetworkProxy+" token="+r.ssvToken);' +
         'process.exit(1)}' +
-        'console.log("deployed proxy + token match constants.star: "+r.ssvNetworkProxy+" / "+r.ssvToken)'
+        'console.log("deployed proxy + token match constants.env: "+r.ssvNetworkProxy+" / "+r.ssvToken)'
     )
     deployed = plan.exec(
         service_name=constants.DEPLOYER_SERVICE_NAME,
         recipe=ExecRecipe(command=["node", "-e", addr_check]),
-        description="Assert deployed proxy + token == constants.star (fail-fast on drift)",
+        description="Assert deployed proxy + token == constants.env (fail-fast on drift)",
     )
     plan.verify(value=deployed["code"], assertion="==", target_value=0)

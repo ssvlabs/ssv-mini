@@ -10,8 +10,6 @@
 
 ## Medium Priority
 
-- [ ] **Extract shared constants** — `OWNER_ADDRESS`, `SSV_CONTRACT`, image digests, and mnemonic are duplicated between `generate-static-keys.sh`, `utils/constants.star`, `run-test.sh`, and `params.yaml`. Create a single source of truth (e.g., `constants.env` or parse from `params.yaml`).
-
 - [ ] **`ssv-mini` CLI should delegate to `make`** — currently reimplements kurtosis commands (`clean`, `run`, `service update`). Should call `make -C "$SSV_MINI_REPO" run` etc. to keep logic in one place.
 
 - [ ] **CI pipeline** — run `make prepare && make run` on PR to verify the testnet starts. Could use GitHub Actions with Docker-in-Docker or a self-hosted runner with Kurtosis.
