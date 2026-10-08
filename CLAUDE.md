@@ -64,7 +64,7 @@ Network configuration is controlled via `params.yaml`:
 
 Make-level overrides (substituted into a generated copy of `PARAMS_FILE`, sources untouched):
 - `GLOAS_FORK_EPOCH=N`: retune the ePBS fork epoch (gloas params only)
-- `BOOLE_FORK_EPOCH=N`: retune the SSV Boole fork epoch (boole params only)
+- `BOOLE_FORK_EPOCH=N`: retune the SSV Boole fork epoch (boole and gloas params; gloas keeps Boole dormant unless set)
 - `PRE_REGISTER_VALIDATORS=true|false`: toggle the flag above without editing the file
 - `PRE_REGISTER_COUNT=N`: partition the pool (cohort P = first N keyshares), leaving D for a registering suite — the aetheria#176 split (requires `PRE_REGISTER_VALIDATORS=true`; validated at plan time)
 
