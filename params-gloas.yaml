@@ -124,11 +124,11 @@ network:
 
 use_static_keys: true
 
-# pre_register_validators for the gloas net. See params.yaml for the flag's full semantics and its
-# incompatibility with the executor's validator-registering suites. Enabled here, the deployer
-# bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
-# from genesis — which the aetheria (transition) suite's per-validator fork-transition checks need
-# (aetheria#141 A2).
+# pre_register_validators for the gloas net (see params.yaml for the flag's semantics and its
+# incompatibility with the executor's validator-registering suites). Off by default. Turned on (e.g.
+# PRE_REGISTER_VALIDATORS=true), Step 4 registers the static keyshare set at bring-up so the fleet
+# runs SSV-managed validators from genesis, which the aetheria (transition) suite's per-validator
+# fork-transition checks need (aetheria#141 A2).
 pre_register_validators: false
 
 # pre_register_count partitions the static keyshare pool when pre_register_validators is true: register
