@@ -1,88 +1,54 @@
 # Gloas / ePBS (EIP-7732) fork-transition test: genesis on Fulu, forks into Gloas at epoch 2.
-# Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas
+# Usage: make prepare && make run-gloas
 #        (or: make run PARAMS_FILE=params-gloas.yaml)
+# SSV_COMMIT defaults to stage, which carries ePBS since ssvlabs/ssv#2901.
 #
-# Clients: ethpandaops glamsterdam-devnet-8 builds — the stock geth/lighthouse releases used by
-# params.yaml do NOT implement EIP-7732. devnet-8 is the live target.
-# 2026-09-02: geth+lodestar bumped devnet-6 -> devnet-8 to match the node's devnet-8 Gloas spec (the
-# "source beacon-chain types from go-eth2-client" repin). The devnet-6 CL computed a different
-# EIP-7688/7916 progressive-merkleization block root and rejected every §4 submit with 500
-# BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021); devnet-8 clears it — the aetheria#176 boot validated
-# the full ePBS lifecycle on the 2026-09-02 pins (§4 published, §6 CONFIRMED, CL head continuity
-# through the fork).
-# 2026-09-27: lodestar re-pinned to the newest glamsterdam-devnet-8 build, which follows consensus-specs
-# v1.7.0-beta.2 while the node's Gloas types are alpha.14-era. Between the two, the Gloas SSZ containers
-# differ only in declaration syntax (the spec's SSZ-library swap) and the PTC -> PayloadTimelinessCommittee
-# type renames — same fields in the same order — so the node's block/envelope roots still match; the rest
-# is state-transition / validation / fork-choice logic. geth's pin is still the devnet-8 tag's newest build.
-# 2026-09-28: validated on four max-scale aetheria (glamsterdam-fork) runs with this lodestar and dora (3000
-# SSV validators; 4 nodes and 3 of 4): every graded §4 block landed with a full §6 payload, the CL head
+# Clients: the Sepolia Glamsterdam releases, Lighthouse v8.3.0-rc.0 + Geth v1.17.7 (Gloas/Amsterdam activate
+# on Sepolia on 2026-10-06), pinned below as a validated pair rather than taken from constants.env's defaults
+# (whose Lighthouse v8.2.2 lacks §6, see below). Validated 2026-10-05 on a max-scale aetheria
+# (glamsterdam-fork) run (3000 SSV validators, SSV stage nodes + the ssvlabs/ssv#3045 exporter): every graded
+# §4 block landed with a full §6 payload, PTC votes and §2 attestations settled correct on-chain, the CL head
 # advanced through the fork, and dora indexed the Gloas blocks without a decode error.
-# §4 status: the node produces, signs, and SUBMITS Gloas blocks end-to-end on devnet-8 (blocks land
-# canonically) now that the block's execution requests use the EIP-8282 five-list layout — the earlier
-# three-list Electra type marshaled the block 8 bytes short and lighthouse v8.2.0 rejected the submit.
-# One wrinkle seen on Lodestar: it 500s the redundant all-operator submits with BLOCK_ERROR_ALREADY_KNOWN
-# (the block still lands) — the "BN dedupes by root" assumption doesn't hold there (ssvlabs/ssv#2922);
-# the node treats already-known as submit success, so the redundant §4 submits no longer error.
-# §6 status: works END-TO-END on Lodestar (this file's pin) — produce (beacon-APIs#580) + publish. The
-# node's earlier blinded publish body was rejected by Lodestar (ssvlabs/ssv#2921; fixed — it posts the
-# full signed envelope), and the redundant all-operator envelope publishes hit
-# EXECUTION_PAYLOAD_ENVELOPE_ERROR_ALREADY_KNOWN — treated as success since ssvlabs/ssv#2923, validated
-# on this net: a (ptc),(proposer) run published 4/4 envelopes with zero submit errors. lighthouse v8.2.0
-# does NOT implement the envelope-produce endpoint (GET .../execution_payload_envelopes/{slot}/{root}
-# -> 404), so §6 is unreachable there — hence the Lodestar pin below (a digest-pinned devnet-8 build;
-# needs the CL-agnostic EL lookup, ssvlabs/aetheria#136). Earlier Lodestar findings came from local runs
-# with cl_type swapped; the pin just makes that the default.
-# The genesis generator is pinned to a Gloas-aware build (the ethereum-package@6.1.0 default, 5.3.5,
-# predates Gloas).
+# §6: Lighthouse v8.3 serves the envelope-produce endpoint. v8.2 returned 404 there, which is why this net
+# ran a Lodestar glamsterdam-devnet-8 build (with the CL-agnostic EL lookup, ssvlabs/aetheria#136) until
+# 2026-10-05.
+# Builder registrations: no builder is configured, so Lighthouse rejects every non-empty register_validator
+# batch with 500 BuilderMissing and the SSV nodes log "failed to submit validator registrations" on pre-fork
+# slots. Harmless for these tests: registrations stop at the fork, and nothing here needs a builder.
+# Genesis generator: it must deploy the EIP-8282 builder deposit/exit contracts where Geth expects them
+# (deposit 0x0000bff46984e3725691fa540a8c7589300d8282). Without them Geth builds no payload after the fork
+# ("empty system contract"), so every post-fork block is payload-less and no transaction lands. The
+# ethereum-package@6.1.0 default (5.3.5) predates Gloas and 6.0.8 these addresses; 6.2.3 is
+# ethereum-package main's default.
 #
-# Heads-up — geth below is now digest-PINNED. It used to track the moving glamsterdam-devnet-6 tag, but
-# that tag drifted into a build that stalled the chain ~1.4 epochs past the Gloas fork; it's pinned to a
-# build validated to sustain liveness ~30 epochs past the fork (ssvlabs/ssv-mini#38). Every image here is
-# now pinned to a fixed build (geth + CL by digest, dora + generator by fixed tag), so the net is
-# reproducible. To advance with devnet-8: `docker pull ethpandaops/geth:glamsterdam-devnet-8`, read its
-# digest (`docker inspect --format '{{index .RepoDigests 0}}' ethpandaops/geth:glamsterdam-devnet-8`),
-# validate a run, then bump el_image below.
+# Every image here is pinned to a fixed build (geth + CL by digest, dora + generator by fixed tag), so the net
+# is reproducible. To bump a client: read the new tag's digest
+# (`docker buildx imagetools inspect <image:tag>`), validate a run, then update el_image / cl_image below.
 #
 # Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV-protocol fork) is
 # independent of Gloas and — postponed by the SSV team — stays DORMANT through Glamsterdam, so ePBS is
 # validated pre-Boole (Alan): per-validator aggregator runner, Alan gossip topics/domain. boole_epoch
-# below is a dormant far-future epoch (its inline note explains why not the math.MaxUint64 sentinel);
-# override via BOOLE_FORK_EPOCH to activate Boole (the (boole) suite on local_testnet_boole covers it).
+# below keeps Boole dormant; override via BOOLE_FORK_EPOCH to activate it (the (boole) suite on
+# local_testnet_boole covers it).
 #
-# Monitor (E2M) was historically disabled on this net — the monitor couldn't decode GLOAS blocks
-# (go-eth2-client v0.28.1 has no Gloas types → it FATAL'd on the post-fork epochs). ethereum2-monitor#504
-# (merged) fixes that with a Gloas block decode for attestation validation. Fulu is NOT a blocker: it's
-# decoded natively (go-eth2-client v0.28.1 has first-class Fulu types, and the monitor has beacon/fulu.go
-# + Fulu cases in its block/resolver switches), so a #504-inclusive monitor handles this net's Fulu
-# (epochs 0-1) AND Gloas (epoch 2+) blocks. ssv-mini builds the monitor from origin/main, so its image
-# already includes #504.
-# E2M is ENABLED below. Validated live — E2M §2 attestation confirmation works on Gloas (the first live
-# exercise of #504's Gloas block decode + store.SaveBlock); tracked in ssvlabs/aetheria#137. Dependency: a
-# gloas (event) run also needs the executor's local_testnet E2M-removal-skip — the strict removal "eviction"
-# teardown check (attestations.Assigned→0) false-fails across the WHOLE local_testnet family (NOT
-# Gloas-specific; Loki still verifies removal there), so it's skipped on local; without that executor fix the
-# run reds on the removal teardown despite §2 passing. Caveat: on Gloas the execution payload moves to the §6 envelope, so #504 stubs exec-data
-# (fee-recipient / block-number / txs / MEV) — E2M's EXECUTION checks stay degraded until sourced from the
-# envelope; §2 ATTESTATION validation is unaffected. Meanwhile, observe ePBS via the SSV node logs and dora.
+# Monitor (E2M) is enabled and Gloas-aware: ethereum2-monitor#504 decodes the Gloas blocks, and #510 grades
+# the ePBS duties (§6 payload status and execution block from the envelope, PTC votes, the §2
+# payload-timeliness vote). ssv-mini builds the monitor from origin/main, so its image carries both.
 
 network:
   participants:
   - el_type: geth
-    # Digest-pinned geth glamsterdam-devnet-8 (bumped from devnet-6 on 2026-09-02; resolved from the
-    # moving glamsterdam-devnet-8 tag). The devnet-6 geth was pinned for liveness (ssvlabs/ssv-mini#38);
-    # this devnet-8 build sustained liveness through the Gloas fork in the aetheria#176 boot (CL head
-    # continuity passed); keep watching for a stall on longer runs.
-    el_image: ethpandaops/geth@sha256:50fad280c7e2a2d7df835b46753c7633882824fbf545efb63c03451f910090e8
-    cl_type: lodestar
-    # Digest-pinned Lodestar glamsterdam-devnet-8-f1b14bc, the moving glamsterdam-devnet-8 tag's newest build
-    # as of 2026-09-27 (re-pinned then from the tag's 2026-09-02 build, which had replaced the devnet-6-era
-    # unstable-2e78647 snapshot; the spec gap is covered in the header). Rationale: the node's Gloas block
-    # types follow the devnet-8 spec, so a devnet-6 CL computed a different EIP-7688/7916 progressive-
-    # merkleization root and rejected every §4 submit with 500 BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021);
-    # a devnet-8 CL matches the node's root. (devnet-8 lodestar retains §6 produce+publish and §5 proposer_preferences.)
-    cl_image: ethpandaops/lodestar@sha256:c5d9cfb9d93c182edc6883f58de847af18a70293ce7573259236da695ea248d1
+    # Geth v1.17.7 (ethereum/client-go:v1.17.7), digest-pinned.
+    el_image: ethereum/client-go@sha256:6e9669cca5359cdb2c5571198d51e78fc18128b56bff50a1f8422d1c2946fd64
+    cl_type: lighthouse
+    # Lighthouse v8.3.0-rc.0 (sigp/lighthouse:v8.3.0-rc.0), digest-pinned.
+    cl_image: sigp/lighthouse@sha256:3e5f0609c74b824d3cb1049920169114d99fd7bc9082b996b3adae3d4e9ef8dc
+    # Lighthouse holds 16 events per SSE topic by default and drops the oldest for a subscriber that falls
+    # behind. A slot's PTC votes (up to 512) arrive in bursts, so the monitor lost some and read them as
+    # misses (sigp/lighthouse#10214, ssvlabs/ethereum2-monitor#593). 32x holds a full slot of votes.
+    cl_extra_params:
+      - "--http-sse-capacity-multiplier=32"
     # VC cohort = validator_count*count, which must equal the SSV seed start (SSV_SEED_START_INDEX of
     # utils/constants.star). Before SSV adopts the seed, the chain justifies on this always-on cohort alone,
     # so it needs 2/3 of the set: the SSV pool must stay < 1/3. Short of that, the chain can't justify, and
@@ -105,9 +71,9 @@ network:
   dora_params:
     image: ethpandaops/dora:master-3d0d825
 
-  # Pin a Gloas-aware generator build (rationale in the header).
+  # Pin a generator that deploys the EIP-8282 contracts where Geth expects them (rationale in the header).
   ethereum_genesis_generator_params:
-    image: ethpandaops/ethereum-genesis-generator:6.0.8
+    image: ethpandaops/ethereum-genesis-generator:6.2.3
 
   network_params:
     network_id: "3151908"
@@ -151,9 +117,11 @@ pre_register_count: 0
 unsafe_skip_validator_layout_guard: false
 
 monitor:
-  enabled: true    # ENABLED: E2M §2 validated on Gloas (ssvlabs/aetheria#137); removal teardown E2M is skipped on local_testnet by the executor
+  enabled: true    # Gloas-aware (see the header)
 
-boole_epoch: 1000000000   # dormant far-future epoch — never reached in a run, so ePBS stays pre-Boole (Alan). Not math.MaxUint64/1<<63: the node's Validate() overflows on a scheduled boole epoch > ~5.76e17, only the exact MaxUint64 sentinel counts as unscheduled, and the config pipeline float-rounds it.
+# Dormant Boole: utils/constants.star's BOOLE_DORMANT_EPOCH (the default when unset), which says why not
+# the MaxUint64 sentinel. Spelled out so BOOLE_FORK_EPOCH has a key to substitute.
+boole_epoch: 1000000000
 
 nodes:
   ssv:
