@@ -100,7 +100,7 @@ make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDAT
 
 - SSV nodes require EL at block 16+ (Event Syncer needs mature chain)
 - Contract deployment needs EL at block 1+
-- Static keys assume 4 operators and the aetheria seed [`SSV_SEED_START_INDEX`, +`SSV_MANAGED_VALIDATOR_COUNT`) of `utils/constants.star` ([64, 74) by default); scale with `SSV_VALIDATOR_COUNT=N ./scripts/generate-static-keys.sh` (regenerate the aetheria seed to the same N)
+- Static keys assume 4 operators and the aetheria seed [`SSV_SEED_START_INDEX`, +`SSV_MANAGED_VALIDATOR_COUNT`) of `utils/constants.star` ([64, 74) by default); scale with `SSV_VALIDATOR_COUNT=N ./scripts/generate-static-keys.sh` (regenerate the aetheria seed to the same N). Keep N < `CL_VALIDATOR_START`/2 so the SSV pool stays < 1/3 of the set; past that, raise `CL_VALIDATOR_START` and the params' `validator_count*count` with it
 - Changing operator/validator counts requires `use_static_keys: false` or `make generate-keys`
 
 ## Health Checks
