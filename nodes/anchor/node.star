@@ -16,8 +16,6 @@ def start(plan, num_nodes, cl_url, el_rpc, el_ws, key_pems, config, image):
         "--enr-address", IP_PLACEHOLDER, "--enr-tcp-port", "9100", "--enr-udp-port", "9100",
         "--enr-quic-port", "9101", "--port", "9100", "--discovery-port", "9100", "--quic-port", "9101",
         "--logfile-max-number", "0", "--debug-level", "debug",
-        # mitigation of https://github.com/sigp/anchor/issues/765
-        "--subscribe-all-subnets",
         # Prometheus metrics; anchor defaults the listen address to 127.0.0.1, which is unreachable
         # from outside the container, so bind 0.0.0.0 for the published port to work.
         "--metrics", "--metrics-address", "0.0.0.0", "--metrics-port", str(ANCHOR_METRICS_PORT),
