@@ -10,15 +10,14 @@ WORK_DIR=$(mktemp -d)
 # source of truth the Starlark side reads too, so the generated keys match what main.star deploys.
 source "$PROJECT_DIR/constants.env"
 
-# The SSV seed layout, both env-overridable to scale the pool (ssvlabs/aetheria#176). SSV_VALIDATOR_COUNT
-# is the pool size (keyshares for indices [START, START+N)); CL_VALIDATOR_START is the VC total = the seed
-# start index, which must equal the genesis VC cohort (params validator_count*count) — scale it WITH the
-# pool so the always-on VC majority keeps the chain justifying while the SSV pool is > 1/3 of the set.
-# Step 4 below syncs constants.star (SSV_SEED_START_INDEX / SSV_MANAGED_VALIDATOR_COUNT) + params
-# preregistered so they can't drift; regenerate the aetheria seed to the same N (ssvlabs/aetheria
-# `orchestrator/cmd/gen-testnet-seed -count N -start START`).
+# The SSV seed layout, both env-overridable to scale the pool (ssvlabs/aetheria#176): keyshares for indices
+# [CL_VALIDATOR_START, +SSV_VALIDATOR_COUNT). CL_VALIDATOR_START must also equal the VC total (params
+# validator_count*count) — scale it WITH the pool so the VCs keep the 2/3 the chain needs to justify on,
+# i.e. the SSV pool stays < 1/3 of the set. Step 4 below syncs utils/constants.star and the params'
+# preregistered_validator_count; regenerate the aetheria seed to match (ssvlabs/aetheria
+# `orchestrator/cmd/gen-testnet-seed -count <SSV_VALIDATOR_COUNT> -start <CL_VALIDATOR_START>`).
 CL_VALIDATOR_START=${CL_VALIDATOR_START:-64}     # VC total = SSV seed start index
-SSV_VALIDATOR_COUNT=${SSV_VALIDATOR_COUNT:-10}   # SSV pool size, indices [CL_VALIDATOR_START, +count)
+SSV_VALIDATOR_COUNT=${SSV_VALIDATOR_COUNT:-10}   # SSV pool size
 NUM_OPERATORS=4
 
 trap "rm -rf $WORK_DIR" EXIT
