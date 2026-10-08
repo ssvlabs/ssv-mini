@@ -38,7 +38,7 @@ check-deps:
 
 # Optional params overrides, substituted into a generated copy of PARAMS_FILE (the sources stay
 # untouched). GLOAS_FORK_EPOCH retunes the ePBS fork (gloas params only); BOOLE_FORK_EPOCH retunes
-# the SSV Boole fork (boole params only); PRE_REGISTER_VALIDATORS bulk-registers the static
+# the SSV Boole fork (boole and gloas params); PRE_REGISTER_VALIDATORS bulk-registers the static
 # keyshares at bring-up (see main.star Step 4), and PRE_REGISTER_COUNT registers only the first N of
 # them — the aetheria#176 pool split, leaving the rest for the executor's committee suites (cohort D).
 # SSV_COUNT / ANCHOR_COUNT override nodes.ssv.count /
