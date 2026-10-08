@@ -40,7 +40,7 @@ ARTIFACT_PREFIX = 'ssv-validators'
 
 
 def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
-    plan.add_service(SERVICE_NAME, SERVICE_CONFIG)
+    plan.add_service(SERVICE_NAME, SERVICE_CONFIG, description="Starting validator keystore generator")
 
     stop_index = start_index + validator_count
 
@@ -64,9 +64,11 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
     command_str = " && ".join(all_sub_command_strs)
 
     command_result = plan.exec(
-        recipe=ExecRecipe(command=["sh", "-c", command_str]), service_name=SERVICE_NAME
+        recipe=ExecRecipe(command=["sh", "-c", command_str]),
+        service_name=SERVICE_NAME,
+        description="Generating validator keystores [{}, {})".format(start_index, stop_index),
     )
-    plan.verify(command_result["code"], "==", SUCCESSFUL_EXEC_CMD_EXIT_CODE)
+    plan.verify(command_result["code"], "==", SUCCESSFUL_EXEC_CMD_EXIT_CODE, description="Verifying validator keystore generation succeeded")
 
     artifact_name = "{0}-{1}-{2}".format(
         ARTIFACT_PREFIX,
@@ -74,7 +76,7 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
         stop_index - 1,
     )
     artifact_name = plan.store_service_files(
-        SERVICE_NAME, NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR, name=artifact_name
+        SERVICE_NAME, NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR, name=artifact_name, description="Storing validator keystores"
     )
 
     base_dirname_in_artifact = path_base(NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR)

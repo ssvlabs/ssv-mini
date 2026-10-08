@@ -118,7 +118,8 @@ def read_enr_from_file(plan, service_name):
         service_name = service_name,
         recipe = ExecRecipe(
             command = ["/bin/sh", "-c", "cat /opt/data/network/enr.dat"]
-        )
+        ),
+        description = "Reading the {} ENR".format(service_name),
     )
     
     # Return the ENR content

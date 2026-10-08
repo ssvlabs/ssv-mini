@@ -80,7 +80,7 @@ def get_anchor_files(plan, index, key_pem, config):
     if index == 0:
         return {
             "/opt/data": key_pem,
-            "/opt/network": plan.upload_files("./config/key"),
+            "/opt/network": plan.upload_files("./config/key", description="Uploading Anchor bootnode network key"),
             "/opt/testnet": config,
         }
     else:
