@@ -27,14 +27,12 @@ network:
     electra_fork_epoch: 0
     fulu_fork_epoch: 0
     perfect_peerdas_enabled: false
-    # The aetheria local_testnet seed (ssvlabs/aetheria orchestrator/script/insert_test_data.sql) is the set
-    # of deposited-but-VC-idle validators the SSV operators adopt, at indices
+    # The aetheria local_testnet seed (ssvlabs/aetheria orchestrator/script/insert_test_data.sql): the
+    # deposited-but-VC-idle validators the SSV operators adopt, at indices
     # [SSV_SEED_START_INDEX, +SSV_MANAGED_VALIDATOR_COUNT) of utils/constants.star ([64, 74) by default).
-    # VCs run [0, total validator_count*count summed over all participant groups); genesis deposits
-    # [0, preregistered). Keep the VC total == the seed start and preregistered_validator_count == the seed
-    # end, both exactly (main.star asserts this by default; unsafe_skip_validator_layout_guard in
-    # params-gloas.yaml opts out for standalone liveness probes), else operators would run VC-active
-    # validators -> double-sign -> slashing. generate-static-keys.sh Step 4 syncs preregistered_validator_count.
+    # VCs run [0, validator_count*count summed over all participant groups) and genesis deposits
+    # [0, preregistered_validator_count), so keep the VC total == the seed start and this == the seed end.
+    # main.star's layout guard enforces both and explains why; generate-static-keys.sh Step 4 syncs this.
     preregistered_validator_count: 74
 
   port_publisher:
@@ -51,27 +49,24 @@ use_static_keys: true
 # Default false preserves the aetheria flow (its executor registers and funds its own validators and
 # expects a clean cluster). A standalone `kurtosis run` (no executor) needs this true so operators
 # actually run validators; consumers gating CI without aetheria (e.g. sigp/anchor) opt in. See #29.
-# When true, the static keyshares occupy the seed (see network_params above), which the executor's
-# validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) also register at test time, so running
-# those suites against a FULL flag-on enclave reverts with ValidatorAlreadyExists — use standard
-# (flag-off) enclaves, or partition the pool with pre_register_count below.
+# When true, Step 4 registers the seed's keyshares (see network_params above), which the executor's
+# validator-registering suites ((event)/(ptc)/(proposer)/(p2p)) also register, so those suites revert
+# with ValidatorAlreadyExists on a FULL flag-on enclave — use flag-off enclaves, or split the pool with
+# pre_register_count below.
 pre_register_validators: false
 
-# pre_register_count partitions the static keyshare pool when pre_register_validators is true: register
-# only the first N keyshares on-chain (cohort P, the seed's first N indices), leaving the rest of the seed
-# for the aetheria executor to register as its own cohort (D). This index-partitioned P⊎D split lets pre-registration and
-# a validator-registering suite share one enclave without the ValidatorAlreadyExists collision above —
-# they register disjoint pubkeys under the same owner, and D's registration continues from N on BOTH
-# halves of the contract — the sharesData nonce sequence AND the live on-chain cluster snapshot
-# (validatorCount N, N*2.5 ETH, not a zero struct) — via the executor's live path (this D leg is
-# boot-validated end-to-end by aetheria#176). 0 (default) registers the FULL set (no split); a positive
-# count must be < the pool size so cohort D is non-empty (the full pool would be a no-op split). Only a CONTIGUOUS
-# prefix is safe: the sharesData nonce sequence is 0-based (see contract/registration/register-validators.cjs
-# and ssvlabs/ssv-mini#36). Consumed by aetheria#176's unified fork-transition suite. The ACTUAL split point
-# N — plus the cohort P/D pubkey partition and the registration context (owner, operatorIds, SSVNetwork
-# address) — is published at bring-up as the `pre-registered.json` enclave artifact (kurtosis files download
-# <enclave> pre-registered.json): the shared source of truth that lets the executor read N and that context
-# instead of re-declaring them across repos (ssvlabs/ssv-mini#53).
+# pre_register_count splits the pool when pre_register_validators is true: register only cohort P, the
+# seed's first N indices, and leave the rest for the aetheria executor to register as cohort D. P and D
+# are disjoint pubkeys under one owner, so pre-registration and a validator-registering suite share one
+# enclave without the ValidatorAlreadyExists collision above (aetheria#176's unified fork-transition suite
+# runs this way). The executor's D registration continues from N on both the sharesData nonce sequence
+# and the live on-chain cluster snapshot (validatorCount N, N*2.5 ETH).
+# 0 (default) registers the full set; a positive count must be < the pool size so D is non-empty. Only a
+# CONTIGUOUS prefix is safe: the sharesData nonce sequence is 0-based (ssvlabs/ssv-mini#36; see
+# contract/registration/register-validators.cjs). Bring-up publishes the actual N, the P/D pubkeys and the
+# registration context (owner, operatorIds, SSVNetwork address) as the `pre-registered.json` enclave
+# artifact (`kurtosis files download <enclave> pre-registered.json`), so the executor reads them instead
+# of re-declaring them (ssvlabs/ssv-mini#53).
 pre_register_count: 0
 
 # The ethereum2-monitor (E2M) indexes SSV validator attestations and serves the
