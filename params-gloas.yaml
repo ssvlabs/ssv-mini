@@ -29,8 +29,8 @@
 # node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV-protocol fork) is
 # independent of Gloas and — postponed by the SSV team — stays DORMANT through Glamsterdam, so ePBS is
 # validated pre-Boole (Alan): per-validator aggregator runner, Alan gossip topics/domain. boole_epoch
-# below is a dormant far-future epoch (its inline note explains why not the math.MaxUint64 sentinel);
-# override via BOOLE_FORK_EPOCH to activate Boole (the (boole) suite on local_testnet_boole covers it).
+# below keeps Boole dormant; override via BOOLE_FORK_EPOCH to activate it (the (boole) suite on
+# local_testnet_boole covers it).
 #
 # Monitor (E2M) is enabled and Gloas-aware: ethereum2-monitor#504 decodes the Gloas blocks, and #510 grades
 # the ePBS duties (§6 payload status and execution block from the envelope, PTC votes, the §2
@@ -119,7 +119,9 @@ unsafe_skip_validator_layout_guard: false
 monitor:
   enabled: true    # Gloas-aware (see the header)
 
-boole_epoch: 1000000000   # dormant far-future epoch — never reached in a run, so ePBS stays pre-Boole (Alan). Not math.MaxUint64/1<<63: the node's Validate() overflows on a scheduled boole epoch > ~5.76e17, only the exact MaxUint64 sentinel counts as unscheduled, and the config pipeline float-rounds it.
+# Dormant Boole: utils/constants.star's BOOLE_DORMANT_EPOCH (the default when unset), which says why not
+# the MaxUint64 sentinel. Spelled out so BOOLE_FORK_EPOCH has a key to substitute.
+boole_epoch: 1000000000
 
 nodes:
   ssv:
