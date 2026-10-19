@@ -35,7 +35,7 @@ accepts() {
 
 echo "── netem_primary_host: extract the PRIMARY beacon host from a rendered BeaconNodeAddr ──"
 # The rendered config carries the resolved endpoint list, ';'-joined for go-SSV. The primary is
-# entry 0 — that is the BN whose link FLT-01/PTC-06 shape. Fallbacks must be ignored, or shaping
+# entry 0 — that is the BN whose link TARGET=bn shapes. Fallbacks must be ignored, or shaping
 # would target a CL the operator is not actually using.
 eq "single endpoint"        "$(netem_primary_host 'http://cl-1-lodestar-geth:4000')"                                  "cl-1-lodestar-geth"
 eq "list takes entry 0"     "$(netem_primary_host 'http://cl-2-lodestar-geth:4000;http://cl-1-lodestar-geth:4000')"   "cl-2-lodestar-geth"
@@ -72,7 +72,7 @@ rejects "op empty"            netem_validate_op ""
 echo
 echo "── netem_shared_ops: who ELSE is on this beacon node ──"
 # The shared-CL guard exists because 'stop operator 3's CL' silently taking op0 down with it is how
-# an FLT-04 run gets misread. Input is 'op<TAB>host' lines, as produced by netem_topology.
+# a beacon-node outage test gets misread. Input is 'op<TAB>host' lines, as produced by netem_topology.
 MAP=$'0\tcl-1-lodestar-geth\n1\tcl-2-lodestar-geth\n2\tcl-3-lodestar-geth\n3\tcl-4-lodestar-geth'
 eq "strict split: nobody shares" "$(netem_shared_ops 3 cl-4-lodestar-geth "$MAP")" ""
 SHARED=$'0\tcl-1-lodestar-geth\n1\tcl-1-lodestar-geth\n2\tcl-3-lodestar-geth\n3\tcl-1-lodestar-geth'

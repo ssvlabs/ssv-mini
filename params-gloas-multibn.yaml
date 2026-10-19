@@ -3,24 +3,24 @@
 #        (or: make run PARAMS_FILE=params-gloas-multibn.yaml)
 #
 # This profile exists so each operator gets its OWN beacon node and execution node instead of
-# sharing one CL/EL pair (see operator_pairs below). That isolation is what the fault and timing
-# scenarios need (PTC-06, FLT-01/03/04/08, TRN-08, PRF-06, EPE-02/05): a fault or restart on one
-# operator's BN must not touch the others. Default topology is 4 x Lodestar (client diversity is a
-# different, orthogonal goal — see the commented-out diversity variant in network.participants).
+# sharing one CL/EL pair (see operator_pairs below). That isolation is what fault and timing tests
+# need — beacon-node latency and outages, PTC non-convergence, EL crashes, clock skew, reorgs at
+# the fork boundary, preference re-emission, envelope publication when the builder operator fails:
+# a fault or restart on one operator's BN must not touch the others. Default topology is
+# 4 x Lodestar (client diversity is a different, orthogonal goal — see the commented-out diversity
+# variant in network.participants).
 #
-# params-gloas.yaml remains the shared-CL baseline (one BN for all operators) and STAYS THAT WAY
-# PERMANENTLY — decided 2026-09-08, recorded as errata #125 in ssv-scout. Do not fold this profile
-# back into it, and do not "finish the migration" later: there is no migration. Per-operator
-# topologies are ADDITIVE — add another profile file when a scenario needs a different one. Keeping
-# the default profile single-shared-CL is what keeps the M1/M6 baseline comparable across builds, so
-# no past verdict is invalidated by a topology change, and it keeps per-operator BNs from ever
-# counting as a CL bump under P0.14 (which would re-trigger the TRN-13 gate).
+# params-gloas.yaml remains the shared-CL baseline (one BN for all operators) and STAYS THAT WAY by
+# design. Do not fold this profile back into it, and do not "finish the migration" later: there is
+# no migration. Per-operator topologies are ADDITIVE — add another profile file when a test needs a
+# different one. Keeping the default profile single-shared-CL keeps its results comparable across
+# builds, so no earlier result is invalidated by a topology change.
 
 network:
   participants:
     # FOUR SEPARATE PAIRS, ONE CLIENT. Isolation and diversity are different goals and most
-    # scenarios need isolation: PTC-06, FLT-01/03/04/08, TRN-08, PRF-06, EPE-02/05 all need
-    # N independent beacon nodes, not N different clients. Four Lodestar pairs give full
+    # fault and timing tests need isolation: N independent beacon nodes, not N different
+    # clients. Four Lodestar pairs give full
     # isolation at zero client-conformance risk. The diversity variant is commented below.
     #
     # validator_count MUST total <= 64 across all groups: main.star:45-52 sums
@@ -64,16 +64,15 @@ network:
       count: 1
       supernode: true
 
-    # ── CL DIVERSITY VARIANT (TRN-06, EPE-07, PTC-05, PTC-09, INT-06) ──
+    # ── CL DIVERSITY VARIANT (mixed-CL clusters, per-client beacon-API coverage) ──
     # Swap the groups above for these when a scenario needs DIFFERENT clients. Read the two
     # constraints first:
     #   1. LIGHTHOUSE MUST NOT SERVE PTC. lighthouse:unstable still registers
     #      payload_attestation_data/{slot} as a PATH param and returns 404 (not 204) for an
     #      empty slot; our client calls the canonical query form. sigp/lighthouse#9959 is
     #      approved and mergeable but is not in a build yet. Putting 2 of 4 operators on
-    #      Lighthouse makes PTC no-quorum BY CONSTRUCTION, before any fault is injected -
-    #      which is exactly how the mixed-Anchor run's 30/30 no_quorum looked. So the
-    #      Lighthouse pair may only back operators whose PTC behaviour is not being measured.
+    #      Lighthouse makes PTC no-quorum BY CONSTRUCTION, before any fault is injected. So
+    #      the Lighthouse pair may only back operators whose PTC behaviour is not being measured.
     #   2. Do NOT add Prysm. It is two consensus-specs alphas behind, has had no release
     #      since 2026-07-29, and is deliberately held off devnet trunk for failing the
     #      non-finality devnet.
@@ -109,7 +108,7 @@ network:
 
     # ethereum-package@main exposes the four Gloas duty deadlines. These values are the
     # consensus-specs mainnet defaults at both alpha.14 and beta.0; they are written out
-    # explicitly so TIM-01 and TIM-05 have a single knob to turn.
+    # explicitly so timing tests have a single place to change them.
     attestation_due_bps_gloas: 2500
     aggregate_due_bps_gloas: 5000
     sync_message_due_bps_gloas: 2500
@@ -178,7 +177,7 @@ images:
   postgres: "postgres:15"
   deployer: "localssv/ssv-network"
 
-# ── FORK BLIND SPOT (TRN-04, TRN-05) ──
+# ── BEACON NODE WITHOUT THE FORK SCHEDULE ("fork blind spot") ──
 # Each entry starts a proxy in front of an existing pair's CL and appends a NEW pair index
 # after the real participants. With the four pairs above, this creates pair 4:
 #
@@ -191,11 +190,11 @@ images:
 # "Gloas (ePBS) fork not scheduled by the beacon node" while the others fork normally.
 #
 # The proxy DELETES the key; it never rewrites it to a far-future value. A far-future value
-# makes the node log the INFO "fork scheduled" line instead, which inverts TRN-04's oracle -
-# the alert watches for the MISSING Info line.
+# makes the node log the INFO "fork scheduled" line instead, which defeats the test - it
+# watches for the MISSING Info line.
 #
-# TRN-05 (the BN gets the schedule after the SSV boot) is then one call, with the SSV node
-# still running and its BN URL unchanged:
+# A late beacon-node upgrade (the BN gets the schedule after the SSV node boots) is then one
+# call, with the SSV node still running and its BN URL unchanged:
 #   kurtosis service exec localnet blindspot-proxy-0 \
 #     "wget -qO- --post-data=on http://127.0.0.1:4000/_qa/passthrough"
 #

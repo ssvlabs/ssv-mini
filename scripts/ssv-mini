@@ -162,7 +162,7 @@ cmd_stop() {
 cmd_logs() {
     local node="${1:-0}"
     # `kurtosis service logs` cannot read an ssv-node's JSON output (see ssv-mini's README.md
-    # "Reading ssv-node logs on `--env mini`"); `docker logs` is the only working read path.
+    # "Reading ssv-node logs"); `docker logs` is the only working read path.
     # Scope the lookup to THIS enclave: a co-tenant enclave can run its own ssv-node-$node, and
     # tailing the wrong one silently shows healthy logs for a node you are not testing.
     local enclave_uuid container match_n

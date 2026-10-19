@@ -4,7 +4,7 @@
 # main.star collapsed the network into a single tuple from all_participants[0]. That made
 # per-operator BN faults, the mixed-CL cluster and the fork blind spot untestable, and it
 # silently corrupted timing evidence: a single shared BN stalling looks like all four
-# operators moving together (see the QA errata for the measured cases).
+# operators moving together.
 #
 # This module owns the map and, more importantly, its validation. A misconfigured topology
 # that boots is worse than one that aborts, because it produces evidence that looks fine

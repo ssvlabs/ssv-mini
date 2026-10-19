@@ -21,7 +21,7 @@ CASES = {
     "blindspot_not_declared": lambda: topology.resolve([[0], [1], [2], [4]], 4, LABELS_4),
 
     # validate_blindspot_pairs() is the pure validation+labelling half split out of
-    # _start_blindspot_proxies (final-review fix: services must never start before the
+    # _start_blindspot_proxies (services must never start before the
     # WHOLE topology, including operator_pairs, has been validated). Its branches are
     # tested here exactly like resolve()'s.
     "bs_not_a_list":      lambda: topology.validate_blindspot_pairs("nope", LABELS_4),

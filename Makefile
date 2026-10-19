@@ -114,7 +114,7 @@ ssv-mini-down:
 SERVICE?=ssv-node-0
 .PHONY: logs
 # `kurtosis service logs` cannot read an ssv-node's JSON output (see README.md's "Reading ssv-node
-# logs on `--env mini`"), so for ssv-node-* this shells out to `docker logs` directly instead —
+# logs"), so for ssv-node-* this shells out to `docker logs` directly instead —
 # the only working read path for this service. Every other service still goes through kurtosis.
 logs:
 	@case "$(SERVICE)" in \
@@ -134,7 +134,7 @@ logs:
 .PHONY: restart-ssv-nodes
 # WARNING: this is a bare `kurtosis service update` over every node — unlike `make fault`/
 # `fault-off`, it does NOT archive first. It destroys every operator's buffered log evidence,
-# including the honest operators an M3 oracle reads. Do not run it mid-scenario; if you need it
+# including the honest operators whose logs a fault test checks. Do not run it mid-scenario; if you need it
 # after that point, archive first by hand (see `make fault`'s ARCHIVE step for the pattern).
 restart-ssv-nodes:
 	@echo "Restarting $(SSV_NODE_COUNT) SSV nodes..."
@@ -254,25 +254,26 @@ start-el:
 	kurtosis service start $(ENCLAVE_NAME) $(EL_SERVICE)
 	@echo "$(EL_SERVICE) started."
 
-# ── Network faults and CL lifecycle (P0.4) ───────────────────────────
+# ── Network faults and CL lifecycle ──────────────────────────────────
 # Delegated to scripts/netem, which resolves containers by kurtosis label (enclave-scoped) and
 # reads each operator's ACTUAL beacon endpoint out of its rendered config, so operator_pairs
 # fallbacks and shared primaries are accounted for rather than re-derived from the params file.
 #
-# TARGET picks the link, because M4 shapes two different ones: bn (the operator -> its beacon node,
-# what FLT-01 and PTC-06 measure), p2p (the operator -> the other operators, FLT-02's partition) or
-# all (a bare root qdisc over every egress packet). Default is bn. Shaping everything when a card
-# meant one link is what makes PTC-06's latency curve unattributable, so the knob is explicit.
+# TARGET picks the link, because beacon-node faults and P2P faults shape different ones: bn (the
+# operator -> its beacon node, e.g. beacon-node latency against PTC convergence), p2p (the operator
+# -> the other operators, e.g. a partition from the rest of the committee) or all (a bare root qdisc
+# over every egress packet). Default is bn. Shaping everything when a test meant one link makes a
+# latency-against-convergence measurement unattributable, so the knob is explicit.
 #
 # Delay is ONE-WAY egress: `MS=200` adds ~200 ms to the request leg, not 200 ms of round trip.
 # Applying is idempotent — the target's root qdisc is cleared first, so a 200/500/1000 ladder is
 # three calls and can never stack two netem qdiscs on one interface.
 #
 # Usage:
-#   make fault-latency OP=0 MS=200                 # FLT-01 ladder, bn link
-#   make fault-latency OP=0 MS=4000 TARGET=p2p     # PTC-04, late envelope
+#   make fault-latency OP=0 MS=200                 # beacon-node latency ladder, bn link
+#   make fault-latency OP=0 MS=4000 TARGET=p2p     # late envelope to the peers
 #   make fault-loss    OP=2 PCT=10
-#   make fault-partition OP=1 TARGET=p2p           # FLT-02, leader vs peers
+#   make fault-partition OP=1 TARGET=p2p           # one operator (e.g. the leader) vs its peers
 #   make restore-net   OP=0
 #   make netem-show    OP=0                        # what is actually installed
 #   make netem-topology                            # operator -> primary beacon node
@@ -311,8 +312,8 @@ netem-topology:
 
 # stop-cl/start-cl address the OPERATOR, not the pair, and resolve through its rendered config.
 # They REFUSE when that beacon node also backs another operator (FORCE=1 overrides), because
-# "stop operator 3's CL" quietly taking the rest of the committee with it is how an FLT-04 result
-# gets misattributed. On the default profiles every operator shares pair 0, so the guard fires there.
+# "stop operator 3's CL" quietly taking the rest of the committee with it is how a beacon-node
+# outage result gets misattributed. On the default profiles every operator shares pair 0, so the guard fires there.
 .PHONY: stop-cl
 stop-cl:
 	@test -n "$(OP)" || { echo "Error: OP is required (0-indexed operator), e.g. make stop-cl OP=3"; exit 1; }
@@ -327,19 +328,19 @@ start-cl:
 test-netem:
 	@./tests/netem/run-tests.sh
 
-# ── M3 fault menu ────────────────────────────────────────────────────
+# ── SSV node fault menu ──────────────────────────────────────────────
 # The instrumented node reads FAULT once at boot, so switching a fault means a
 # `kurtosis service update`, which re-creates the container and destroys its log buffer. These
 # targets therefore ARCHIVE the operator's logs first, then switch, then verify that the node came
 # back reporting the fault that was asked for. A switch that silently did not apply looks exactly
-# like a fault that fired and was correctly ignored — the one failure a test pass cannot detect
-# from the honest side. See qa/FAULTS.md on the ssv branch qa/gloas-m3-fault-menu.
+# like a fault that fired and was correctly ignored — the one failure a test cannot detect from the
+# honest side. See qa/FAULTS.md on the fault-injection ssv branch.
 #
-# Prerequisite: the enclave's SSV image must be the instrumented build — `node/ssv-fault`, built
-# from the ssv branch `qa/gloas-m3-fault-menu` (a distinct tag so FAULT=none operators can keep
-# running the plain node/ssv image; see qa/FAULTS.md §10) — and $(SSV_REPO) (default ../ssv) must
-# be checked out on that same branch, because `go run ./qa/faults/cmd/list` below enumerates the
-# menu from it. On a stock node FAULT is simply ignored: you get the boot-banner timeout below, not
+# Prerequisite: the enclave's SSV image must be a fault-injection build — `node/ssv-fault`, built
+# from an ssv branch that carries the qa/faults/ fault menu (a distinct tag so FAULT=none operators
+# can keep running the plain node/ssv image; see that branch's qa/FAULTS.md) — and $(SSV_REPO)
+# (default ../ssv) must be checked out on that same branch, because `go run ./qa/faults/cmd/list`
+# below enumerates the menu from it. On a stock node FAULT is simply ignored: you get the boot-banner timeout below, not
 # a clear error, so a missed prerequisite reads as flakiness rather than a setup mistake.
 #
 # Container resolution is label-based, not name-based: `docker ps --filter
@@ -366,8 +367,8 @@ fault-list:
 # on the SAME operator, the container carried FAULT, EXPERIMENTAL_GAS_LIMIT and CONFIG_PATH all at
 # once. The long-standing note in this repo that a switch wipes the env list (and therefore drops
 # the OTEL traces pair, and therefore that `fault` and `gas-limit` clobber each other) is WRONG.
-# Commit 86f8750's move of --config= into the entrypoint is still correct and worth keeping, but
-# its stated justification — surviving an env wipe — was never real.
+# Passing --config= in the entrypoint (nodes/ssv/node.star) is still correct and worth keeping, but
+# not for that reason: a switch never wiped the env list.
 #
 # TWO REAL CONSEQUENCES of the merge, both of which bit during the 2026-09-09 bring-up:
 #   1. `--env` cannot UNSET a variable. Restoring a default means setting an explicit value, which
@@ -384,8 +385,8 @@ fault:
 	@MENU=$$( (cd $(SSV_REPO) && go run ./qa/faults/cmd/list) 2>&1 ); MENU_STATUS=$$?; \
 	if [ "$$MENU_STATUS" -ne 0 ]; then \
 		echo "Error: 'go run ./qa/faults/cmd/list' in \$$SSV_REPO=$(SSV_REPO) failed (exit $$MENU_STATUS)."; \
-		echo "       That is the menu command itself failing — wrong branch checked out (needs"; \
-		echo "       qa/gloas-m3-fault-menu), no Go toolchain, or a build error — NOT that '$(FAULT)' is"; \
+		echo "       That is the menu command itself failing — wrong branch checked out (needs a"; \
+		echo "       branch with qa/faults/), no Go toolchain, or a build error — NOT that '$(FAULT)' is"; \
 		echo "       an unknown value. Raw output:"; \
 		printf '%s\n' "$$MENU" | sed 's/^/       /'; \
 		exit 1; \
@@ -446,7 +447,7 @@ fault:
 		fi; \
 		sleep 3; \
 	done; \
-	echo "Error: do not record a verdict for ssv-node-$(OP)'s window until its actual state is confirmed"; \
+	echo "Error: do not trust results from ssv-node-$(OP)'s window until its actual state is confirmed"; \
 	echo "       by hand — ssv-node-$(OP) did not report FAULT=$(FAULT) within $(FAULT_BANNER_TIMEOUT)s."; \
 	echo "       Most likely cause: the enclave is not running the instrumented image — on a stock node"; \
 	echo "       FAULT is silently ignored, and this timeout is exactly what that looks like. Other"; \
@@ -459,9 +460,9 @@ fault:
 # make gas-limit OP=4 VALUE=60000000   -> set one operator's MEV gas limit
 # make gas-limit OP=4 VALUE=default    -> clear it, back to the node's built-in default
 #
-# Exists for passes doc M3 §6.4/§6.5: operator 4 starts with a divergent limit so PRF-04 and
-# PRF-11 are covered from the first epoch, and step 5 then restores the default and expects that
-# operator's preferences to reach quorum again.
+# Lets a test run one operator on a divergent limit, so its proposer preferences diverge from the
+# rest of the committee, then restore the default mid-run and check that the operator's preferences
+# reach quorum again.
 #
 # Uses EXPERIMENTAL_GAS_LIMIT (env) rather than a config-file field so the switch is one command
 # with no artifact re-render; cleanenv reads env after the YAML, so env wins.
@@ -527,7 +528,7 @@ gas-limit:
 		sleep 3; \
 	done; \
 	echo "Error: ssv-node-$(OP) did not come back with the requested gas limit within $(FAULT_BANNER_TIMEOUT)s."; \
-	echo "       Do NOT record a PRF-04 / PRF-11 verdict until the actual state is confirmed by hand:"; \
+	echo "       Do NOT rely on this operator's gas limit until the actual state is confirmed by hand:"; \
 	echo "       docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' <container> | grep GAS_LIMIT"; \
 	echo "       The pre-switch logs are in $$ARCHIVE."; \
 	exit 1
@@ -580,7 +581,7 @@ fault-off:
 		fi; \
 		sleep 3; \
 	done; \
-	echo "Error: do not record a verdict for ssv-node-$(OP)'s window until its actual state is confirmed"; \
+	echo "Error: do not trust results from ssv-node-$(OP)'s window until its actual state is confirmed"; \
 	echo "       by hand — ssv-node-$(OP) did not report 'no fault active' within $(FAULT_BANNER_TIMEOUT)s."; \
 	echo "       Most likely cause: the enclave is not running the instrumented image — on a stock node"; \
 	echo "       FAULT is silently ignored, and this timeout is exactly what that looks like. Other"; \
@@ -633,7 +634,7 @@ help:
 	@echo "  make stop-el                             Stop EL (simulate crash)"
 	@echo "  make start-el                            Restart stopped EL"
 	@echo ""
-	@echo "Network faults / CL lifecycle (P0.4):"
+	@echo "Network faults / CL lifecycle:"
 	@echo "  make fault-latency OP=0 MS=200            One-way egress delay; TARGET=bn|p2p|all (default bn)"
 	@echo "  make fault-loss OP=2 PCT=10               Egress packet loss; same TARGET knob"
 	@echo "  make fault-partition OP=1 TARGET=p2p      100% loss toward the chosen link"
@@ -643,7 +644,7 @@ help:
 	@echo "  make stop-cl OP=3 / start-cl OP=3         That operator's beacon node (refuses if shared)"
 	@echo "  EL_SERVICE=el-2-geth-lighthouse make stop-el   Target specific EL"
 	@echo ""
-	@echo "Fault injection (M3, SSV node):"
+	@echo "Fault injection (SSV node, needs the node/ssv-fault image):"
 	@echo "  make fault-list                           List available FAULT values"
 	@echo "  make fault FAULT=vote-index-2 OP=3         Archive OP's logs, switch its fault, verify banner"
 	@echo "  make fault-off OP=3                        Archive OP's logs, clear its fault, verify banner"
@@ -662,7 +663,7 @@ help:
 	@echo "  make run-boole                       Boole fork, epoch 3 (BOOLE_FORK_EPOCH=N to retune)"
 	@echo "  make run-boole-interop               Boole fork, 2 SSV + 2 Anchor committee (cross-client interop)"
 	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune; devnet-6 images)"
-	@echo "  make run-gloas-multibn                   Gloas with one beacon node per operator (P0.2)"
+	@echo "  make run-gloas-multibn                   Gloas with one beacon node per operator"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
