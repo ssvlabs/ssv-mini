@@ -46,7 +46,7 @@ func TestStripsNamedKeyFromSpec(t *testing.T) {
 
 	data := specData(t, p)
 	if _, ok := data["GLOAS_FORK_EPOCH"]; ok {
-		t.Fatal("GLOAS_FORK_EPOCH must be absent - a far-future value is NOT equivalent, it makes the node log the Info line and inverts TRN-04's oracle")
+		t.Fatal("GLOAS_FORK_EPOCH must be absent - a far-future value is NOT equivalent, it makes the node log the Info line and inverts the check")
 	}
 	// Everything else must survive untouched.
 	if data["FULU_FORK_EPOCH"] != "0" {
@@ -85,8 +85,8 @@ func TestPassthroughRestoresTheKey(t *testing.T) {
 		t.Fatal("key present before passthrough")
 	}
 
-	// TRN-05: the beacon node "gets the schedule" while the SSV node keeps running and its
-	// BN URL never changes.
+	// Late beacon-node upgrade: the beacon node "gets the schedule" while the SSV node keeps
+	// running and its BN URL never changes.
 	resp, err := http.Post(p.URL+"/_qa/passthrough", "text/plain", strings.NewReader("on"))
 	if err != nil {
 		t.Fatalf("post passthrough: %v", err)

@@ -1,16 +1,16 @@
 #!/bin/bash
-# Network-fault injection for ssv-mini (P0.4). Shapes ONE operator's links with tc/netem.
+# Network-fault injection for ssv-mini. Shapes ONE operator's links with tc/netem.
 #
 # WHY A SIDECAR AND NOT `tc` IN THE NODE IMAGE
 # tc must run in the target's network NAMESPACE, not in its filesystem, so this drives it from a
 # throwaway `nicolaka/netshoot` container sharing that namespace. The SSV image therefore needs no
 # iproute2 (its runtime stage carries only dnsutils), and the same command reaches CL and EL
 # containers, which an in-container `apt install` cannot — several client images ship neither apt
-# nor tc, and FLT-01 shapes the BEACON link, so the CL side matters.
+# nor tc, and a beacon-node fault shapes the BEACON link, so the CL side matters.
 #
 # WHY PER-DESTINATION FILTERING IS NOT OPTIONAL
-# `tc qdisc add dev eth0 root netem delay 200ms` shapes ALL egress. That merges FLT-01 (beacon-node
-# latency) with FLT-02 (P2P partition) and makes PTC-06's convergence-against-latency curve
+# `tc qdisc add dev eth0 root netem delay 200ms` shapes ALL egress. That merges a beacon-node
+# latency fault with a P2P partition and makes a PTC convergence-against-latency measurement
 # unattributable — you cannot tell which link caused the non-convergence you measured. So TARGET
 # selects the link, and only TARGET=all uses a bare root qdisc.
 #
@@ -87,7 +87,7 @@ netem_validate_target() {
 
 # netem_shared_ops <op> <host> <map> -> space-separated OTHER operators whose primary is <host>.
 # The shared-CL guard depends on this: "stop operator 3's CL" silently taking op0 down with it is
-# how an FLT-04 run gets misread. <map> is 'op<TAB>host' lines, as netem_topology emits.
+# how a beacon-node outage test gets misread. <map> is 'op<TAB>host' lines, as netem_topology emits.
 netem_shared_ops() {
   local self=$1 host=$2 map=${3-} out=()
   while IFS=$'\t' read -r op h; do
@@ -347,7 +347,7 @@ netem_cmd() {
       host=$(netem_primary_host "$addr") || return 1
       # THE SHARED-CL GUARD. With operator_pairs a CL can back several operators, and the default
       # profiles put EVERY operator on pair 0 — so "stop operator 3's CL" can silently take the
-      # whole committee down. An FLT-04 run misread that way looks like a node defect. Refuse
+      # whole committee down. A beacon-node outage test misread that way looks like a node defect. Refuse
       # unless the caller says they meant it.
       map=$(netem_topology) || return 1
       shared=$(netem_shared_ops "$op" "$host" "$map")

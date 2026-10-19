@@ -24,7 +24,7 @@ def run(plan, args):
     # existing params file and train people to ignore the warning.
     assert_eq(plan, "rule1/absent-does-not-warn", r.warnings, [])
 
-    # A strict one-BN-each split is the M4 default.
+    # A strict one-BN-each split (the params-gloas-multibn.yaml default).
     r = topology.resolve([[0], [1], [2], [3]], 4, LABELS_4)
     assert_eq(plan, "strict-split", r.pairs, [[0], [1], [2], [3]])
     assert_eq(plan, "strict-split/no-warnings", r.warnings, [])

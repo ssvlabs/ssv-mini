@@ -9,11 +9,11 @@
 //
 // So the key must be DELETED, never rewritten to a far-future value. With the key absent the
 // node logs Debug "Gloas (ePBS) fork not scheduled by the beacon node" and GloasForkEpoch()
-// reports ok=false, which is gap G2 and TRN-04's oracle. With GLOAS_FORK_EPOCH set to, say,
+// reports ok=false - the behaviour a fork-blind-spot test must observe. With GLOAS_FORK_EPOCH set to, say,
 // 1000000000 the node instead logs INFO "Gloas (ePBS) fork scheduled", requires
 // GLOAS_FORK_VERSION or errors the whole spec fetch, and populates Forks[DataVersionGloas] -
-// a node that believes Gloas exists. That inverts the oracle: the P0.7 alert watches for the
-// MISSING Info line, so it would not fire and the card would pass having tested nothing.
+// a node that believes Gloas exists. That inverts the check: an alert or test that watches for
+// the MISSING Info line would not fire, and would pass having tested nothing.
 package main
 
 import (

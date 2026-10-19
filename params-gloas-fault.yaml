@@ -1,6 +1,7 @@
-# Gloas / ePBS (EIP-7732) fork-transition test: genesis on Fulu, forks into Gloas at epoch 2.
-# Usage: SSV_COMMIT=epbs-gloas make prepare && make run-gloas
-#        (or: make run PARAMS_FILE=params-gloas.yaml)
+# Gloas / ePBS (EIP-7732) fault-injection profile: genesis on Fulu, forks into Gloas at epoch 3.
+# Runs the fault-injection SSV image (node/ssv-fault; see README's "Switching an SSV node fault")
+# and starts one operator on a divergent MEV gas limit (operator_gas_limits below).
+# Usage: make run PARAMS_FILE=params-gloas-fault.yaml
 #
 # Clients: ethpandaops glamsterdam-devnet-6 builds — the stock geth/lighthouse releases used by
 # params.yaml do NOT implement EIP-7732. devnet-6 is the live target (devnet-5 is superseded).
@@ -85,7 +86,7 @@ network:
     deneb_fork_epoch: 0
     electra_fork_epoch: 0
     fulu_fork_epoch: 0        # Fulu must precede Gloas — activate at genesis
-    gloas_fork_epoch: 3       # ePBS fork; matches passes doc M3 §6.4 exactly (was 2 — changed to avoid a needless deviation)
+    gloas_fork_epoch: 3       # ePBS fork
     perfect_peerdas_enabled: false
     preregistered_validator_count: 74
 
@@ -125,19 +126,18 @@ boole_epoch: 1000000000   # dormant far-future epoch — never reached in a run,
 # same index `make fault OP=N` and `make gas-limit OP=N` take. 0 (or an absent entry) means unset,
 # so the node's built-in default applies.
 #
-# passes doc M3 §6.4 asks for one operator on a divergent limit so PRF-04 and PRF-11 are covered
-# from the first epoch; §6.5 step 5 then restores the default with
-# `make gas-limit OP=2 VALUE=default` and expects that operator's preferences to reach quorum again.
+# One operator starts on a divergent limit, so its proposer preferences diverge from the rest of
+# the committee from the first epoch. `make gas-limit OP=2 VALUE=default` restores the default
+# mid-run; that operator's preferences should then reach quorum again.
 #
-# NOTE ON SIZE. §6.4 specifies size 7 (f=2, operators 4/5/6 degraded). This profile is size 4
-# because `static/keyshares/out.json` holds 4-of-4 shares (operator ids 1-4) and is a SINGLE
-# artifact shared by params.yaml, params-boole.yaml and params-gloas.yaml — regenerating it for 7
-# operators would break all three (scripts/generate-static-keys.sh hardcodes NUM_OPERATORS=4).
-# Size 4 is sufficient for the whole fault ladder because no menu value needs two simultaneously
-# faulty operators (checked against qa/FAULTS.md — `prefs-conflict` is single-node despite §6.3's
-# "from two nodes" wording) and §6.5 degrades sequentially: the gas-limit operator is restored at
-# step 5, before the ladder starts at step 6. With f=1, keep EXACTLY ONE operator degraded at a
-# time. What size 4 costs: TRN-01 "at size 7" cannot be evidenced from this run.
+# NOTE ON SIZE. This profile is size 4 (f=1) because `static/keyshares/out.json` holds 4-of-4
+# shares (operator ids 1-4) and is a SINGLE artifact shared by params.yaml, params-boole.yaml and
+# params-gloas.yaml — regenerating it for 7 operators would break all three
+# (scripts/generate-static-keys.sh hardcodes NUM_OPERATORS=4). Size 4 is enough for single-operator
+# faults: no menu value needs two simultaneously faulty operators (checked against qa/FAULTS.md;
+# `prefs-conflict` is single-node). With f=1, keep EXACTLY ONE operator degraded at a time —
+# restore the gas-limit operator before you fault another one. A 7-operator committee (f=2) cannot
+# be exercised with this profile.
 operator_gas_limits: [0, 0, 60000000, 0]
 
 nodes:

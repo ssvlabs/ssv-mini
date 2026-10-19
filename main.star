@@ -235,8 +235,8 @@ def run(plan, args):
         # appears in the `ssv-node-N` service name and that `make fault OP=N` / `make gas-limit
         # OP=N` address, and the same index space as operator_pairs. 0 (or an absent entry) means
         # "leave unset", so the node's built-in default applies and today's params files are
-        # behaviour-identical. Needed by passes doc M3 §6.4: operator 4 runs a divergent limit so
-        # PRF-04 and PRF-11 are covered from the first epoch, and §6.5 step 5 then restores it.
+        # behaviour-identical. Lets a profile start one operator on a divergent limit (e.g. to test
+        # proposer-preferences divergence); `make gas-limit` can restore the default later.
         gas_limits = args.get("operator_gas_limits", [])
         if type(gas_limits) != "list":
             fail("operator_gas_limits must be a list indexed by global operator index, got {}. " .format(type(gas_limits)) +

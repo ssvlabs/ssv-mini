@@ -23,8 +23,8 @@ set -e
 #   7. Asserts `make fault-off` reports no fault active
 #
 # Prerequisites:
-#   - A running Gloas enclave whose SSV image is the instrumented build
-#     (branch qa/gloas-m3-fault-menu in ../ssv, built as node/ssv-fault)
+#   - A running Gloas enclave whose SSV image is the fault-injection build
+#     (an ssv branch carrying qa/faults/, checked out in ../ssv and built as node/ssv-fault)
 #   - ../ssv checked out on that branch, so `make fault-list` can enumerate the menu
 #
 # Usage:

@@ -127,33 +127,31 @@ curl -s -X POST -H "Content-Type: application/json" \
 - Default: 4-operator clusters with Byzantine fault tolerance
 - `tail -f /dev/null` for idle service entrypoints (not `sleep 99999`)
 
-## M3 Fault Injection
+## SSV Node Fault Injection
 
-- **Prerequisite**: the enclave's SSV image must be the instrumented build — `node/ssv-fault`,
-  built from the ssv branch `qa/gloas-m3-fault-menu` — and `$SSV_REPO` (default `../ssv`) must be
-  checked out on that same branch, because `make fault-list`/`make fault` enumerate the menu from
+- **Prerequisite**: the enclave's SSV image must be a fault-injection build of the node —
+  `node/ssv-fault`, built from an ssv branch that carries the `qa/faults/` fault menu — and
+  `$SSV_REPO` (default `../ssv`) must be checked out on that same branch, because `make fault-list`/`make fault` enumerate the menu from
   it (`go run ./qa/faults/cmd/list`). On a stock node `FAULT` is silently ignored, so a missed
   prerequisite shows up as the boot-banner timeout below, not a clear setup error.
 - Switch a fault with `make fault FAULT=<value> OP=<n>` (`make fault-off OP=<n>` to clear it) —
   never a bare `kurtosis service update`. `make fault` archives the operator's logs first (the
   switch destroys them) and verifies the node reports the requested fault before returning; a bare
   `service update` skips both, and a switch that silently didn't apply looks identical to a fault
-  that fired and was correctly ignored — the one failure a test pass cannot detect otherwise.
+  that fired and was correctly ignored — the one failure a test run cannot detect otherwise.
 - `FAULT` is read once at boot. There is no warm switch — every fault change recreates the
   container (~7 s to the boot banner, ~1 slot to the first injected fault). `nodes.ssv.enable_traces`
   does not survive a switch (`--env FAULT=...` replaces the whole env-var list, dropping the OTEL
   pair too).
 - **Never run `make restart-ssv-nodes` mid-scenario.** It is a bare, unarchived `kurtosis service
   update` over every node — it destroys every operator's buffered log evidence, including the
-  honest operators an M3 oracle reads. Use it only between scenarios, after logs have already been
-  read.
-- `docker logs <container>` is the only working read path for `ssv-node` on `--env mini`.
-  `scout.py --env mini logs query` returns nothing for this service here — a Kurtosis
-  log-collection-engine limitation, not an `ssv-mini`/`ssv` defect (see README's "Reading ssv-node
-  logs on `--env mini`"). Translate any M3 scenario-card oracle written as a scout query into a
-  `docker logs` grep by hand.
+  honest operators whose logs a fault test checks. Use it only between scenarios, after logs have
+  already been read.
+- `docker logs <container>` is the reliable read path for `ssv-node`. `kurtosis service logs` can
+  return nothing for this service — a Kurtosis log-collection-engine limitation, not an
+  `ssv-mini`/`ssv` defect (see README's "Reading ssv-node logs").
 
-## Network Faults (P0.4)
+## Network Faults
 
 - **Targets**: `make fault-latency OP=n MS=x`, `fault-loss OP=n PCT=x`, `fault-partition OP=n`,
   `restore-net OP=n`, `netem-show OP=n`, `netem-topology`, `stop-cl OP=n`, `start-cl OP=n`.
@@ -162,6 +160,9 @@ curl -s -X POST -H "Content-Type: application/json" \
   `p2p` shapes it → the other operators; `all` is a bare root qdisc over every egress packet. Only
   `all` is unfiltered. Shaping everything when a scenario meant one link is what makes a
   latency-against-convergence measurement unattributable, so state the link explicitly.
+- **Do not shape by hand** with `kurtosis service exec ... tc qdisc add dev eth0 root ...`: a bare
+  root qdisc shapes every egress packet (the same as `TARGET=all`), not the link the test is about.
+  Use the make targets.
 - **`tc` comes from a `nicolaka/netshoot` sidecar** sharing the target's network namespace, not from
   the node image — so no image carries `iproute2`, and the same path reaches CL/EL containers, which
   an in-container install cannot (several client images ship neither apt nor tc).
@@ -180,13 +181,6 @@ curl -s -X POST -H "Content-Type: application/json" \
   gloas params file unless handed an image explicitly.
 - Verify a fault landed with `make netem-show OP=n`, and prove the scoping by pinging the shaped and
   an unshaped host from inside the operator's namespace rather than assuming.
-
-## Running QA pass M4
-
-Full reproducible procedure, including the Docker-memory floor and the P2P pre-flight check:
-**`ssv-scout/docs/qa-glamsterdam-m4-runbook.md`**. Read it before following any
-`ssv-scout/scenarios/gloas/*.md` card — several card procedures predate this tooling and prescribe a
-root-qdisc `kurtosis service exec ... tc` command that shapes the wrong thing.
 
 ## Troubleshooting
 

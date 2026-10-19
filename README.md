@@ -79,17 +79,18 @@ make help
 
 Use `EL_SERVICE=el-2-geth-lighthouse` to target the second EL node.
 
-### Switching an M3 fault
+### Switching an SSV node fault
 
-**Prerequisite:** the enclave's SSV image must be the instrumented build — `node/ssv-fault`, built
-from the ssv branch `qa/gloas-m3-fault-menu` (a distinct tag so `FAULT=none` operators can keep
-running the plain `node/ssv` image; see `qa/FAULTS.md` §10) — and `$SSV_REPO` (default `../ssv`)
+**Prerequisite:** the enclave's SSV image must be a fault-injection build of the node —
+`node/ssv-fault`, built from an ssv branch that carries the `qa/faults/` fault menu (a distinct tag
+so `FAULT=none` operators can keep running the plain `node/ssv` image; see that branch's
+`qa/FAULTS.md`) — and `$SSV_REPO` (default `../ssv`)
 must be checked out on that same branch, because `make fault-list`/`make fault` enumerate the menu
 by running `go run ./qa/faults/cmd/list` in it. On a stock node `FAULT` is simply ignored, so a
 missed prerequisite does not error clearly — it shows up as the boot-banner timeout below.
 
 ```bash
-make fault-list                          # the 19 values
+make fault-list                          # the available values
 make fault FAULT=vote-index-2 OP=5       # archive, switch, verify
 make fault-off OP=5
 ```
@@ -109,20 +110,16 @@ non-zero unless the **newly-created** container comes back within `FAULT_BANNER_
 180 s) with a boot banner naming the requested fault (the poll re-resolves the container by label
 each iteration and skips while its ID still matches the pre-switch container, so a retried or
 same-value switch cannot be verified against the old container's buffer); on that timeout, do not
-record a verdict for this operator's window until its state is confirmed by hand — the most likely
+trust results from this operator's window until its state is confirmed by hand — the most likely
 cause is that the enclave is not running the instrumented image (see the prerequisite above; on a
 stock node this timeout is exactly what you see). `make fault-off OP=5` runs the same
 archive-then-verify sequence with `FAULT=none`.
 
-Operator 4's gas limit for PRF-04 and PRF-11 needs the same env-var mechanism, set by hand:
-`ExperimentalGasLimit` / env `EXPERIMENTAL_GAS_LIMIT` (`operator/validator/controller.go:99` in
-`ssv`). `ssv-mini` has no params key for it — either add the env var to a local copy of
-`nodes/ssv/node.star`'s `env_vars` before `make run`, or set it after bring-up with `kurtosis
-service update --env`. **`--env` replaces the whole variable list, not just the named key** —
-before using the second route, read the operator's current env first (`kurtosis service inspect`)
-and re-declare every existing pair alongside the new one, or the update silently drops `FAULT` and
-everything else. See `scenarios/gloas/PRF-04.md`'s "Preconditions and setup" for both routes in
-full and `scenarios/gloas/PRF-11.md` for why the value matters.
+To run one operator on a different MEV gas limit (the node's `ExperimentalGasLimit` / env
+`EXPERIMENTAL_GAS_LIMIT`, `operator/validator/controller.go:99` in `ssv`), set the
+`operator_gas_limits` params key before bring-up (see `params-gloas-fault.yaml`), or switch a
+running operator with `make gas-limit OP=<n> VALUE=<gas>` (`VALUE=default` restores the node's
+built-in default). `make gas-limit` archives and verifies the same way as `make fault`.
 
 A fault switch is a `kurtosis service update`, which re-creates the container: the node's buffered
 logs are lost and it resyncs before it takes part in duties again. Measured on a 4-node Gloas
@@ -130,17 +127,14 @@ enclave on 2026-09-08: **7 s** from the update to the boot banner, **1 slot** un
 operator injected its first fault. `make fault` archives the logs before switching for exactly this
 reason. A `kurtosis service stop` + `start` **does** preserve the container filesystem.
 
-### Reading ssv-node logs on `--env mini`
+### Reading ssv-node logs
 
-`scout.py --env mini logs query` returns nothing for `ssv-node` on this rig, and no query change
-fixes it — **`docker logs <container>` is the only working read path.** Three causes were found:
+`kurtosis service logs` could return nothing for `ssv-node` on this rig, and no query change fixed
+it — **`docker logs <container>` is the always-available read path.** Three causes were found:
 
 - Unconditional OTLP trace export to a collector no profile here creates — **fixed**, gated behind
-  `nodes.ssv.enable_traces` (default off, see `params.yaml`). Note: `enable_traces` does not
-  survive a fault switch — `make fault`'s `--env FAULT=...` replaces the operator's whole env-var
-  list, dropping the OTEL pair too. The node still boots because commit `86f8750` moved
-  `--config=` into the entrypoint instead of depending on that `--env` list; reverting that change
-  would silently break every switch.
+  `nodes.ssv.enable_traces` (default off, see `params.yaml`). The node takes `--config=` from its
+  entrypoint (`nodes/ssv/node.star`), not from the env-var list, so a fault switch cannot drop it.
 - The container printing plain-text lines from the node's own Makefile target before its JSON
   logging started — **fixed**, by exec'ing the `ssvnode` binary directly instead of going through
   `make`.
@@ -163,12 +157,11 @@ fixes it — **`docker logs <container>` is the only working read path.** Three 
   (`regex: '"time":"(?<time>[^"]+)"'`) plus **`Preserve_Key: On`** on the filter, which is required
   to keep the `log` string so the reader still has a message. Verified on fluent-bit 4.0.0 against
   a real ssv-node line. Structured fields are recovered at query time in Grafana with
-  `{job="kurtosis"} | json | line_format "{{.log}}" | json`. Full reasoning and the tested
-  comparison live in ssv-scout's `docs/kurtosis-logging-options.md`.
+  `{job="kurtosis"} | json | line_format "{{.log}}" | json`.
 
   The collector is created **per enclave**, so this only takes effect on a fresh enclave. Until it
   is confirmed there (`kurtosis service logs <enclave> ssv-node-0 -n 5` returning lines), treat
-  `docker logs` as the reliable read path and translate oracles by hand, e.g.:
+  `docker logs` as the reliable read path and grep its output, e.g.:
 
 ```bash
 # Scope to THIS enclave — a co-tenant enclave can run its own ssv-node-5, and reading the wrong
@@ -179,7 +172,7 @@ docker logs $(docker ps --filter label=kurtosis_service_name=ssv-node-5 \
                         --format '{{.Names}}') | grep '"qa_fault"'
 ```
 
-`make logs OP=5` and `./scripts/ssv-mini logs 5` already do this lookup for you.
+`make logs SERVICE=ssv-node-5` and `./scripts/ssv-mini logs 5` already do this lookup for you.
 
 ## Configuration
 
@@ -245,10 +238,11 @@ operators sign with the same keys. With four pairs use `validator_count: 16` eac
 
 Run the validation suite for this map with `make test-topology`.
 
-### Fork blind spot (`blindspot_pairs`)
+### Beacon node without the fork schedule (`blindspot_pairs`)
 
-`blindspot_pairs` starts a spec-rewriting proxy in front of an existing pair's beacon node
-and appends the proxy as a NEW pair index, right after the real participants (pair 0 always
+`blindspot_pairs` gives an operator a "fork blind spot": a beacon node whose `/eth/v1/config/spec`
+does not schedule the fork. It starts a spec-rewriting proxy in front of an existing pair's beacon
+node and appends the proxy as a NEW pair index, right after the real participants (pair 0 always
 stays a real pair — `infra`, the contract deploy, the block-height gates, the keysplit,
 validator registration and the monitor never see a rewritten spec).
 
@@ -260,12 +254,13 @@ operator_pairs: [[0], [1], [2], [4]]  # op3 now points at pair 4, the proxy
 ```
 
 - The proxy **deletes** the listed spec key; it never rewrites it to a far-future value. A
-  far-future value makes the node log the INFO "fork scheduled" line instead, which is the
-  wrong oracle for TRN-04 (the alert watches for the *missing* Info line).
+  far-future value makes the node log the INFO "fork scheduled" line instead, which defeats the
+  purpose: a test (or alert) for an unscheduled fork watches for the *missing* Info line.
 - Limits: the proxy only sits on the CL path (the EL is the upstream pair's, untouched), and
   it adds a network hop — never route timing or fault-injection scenarios through it.
 - Requires `make prepare-blindspot-proxy` before bring-up. See the commented example in
-  `params-gloas-multibn.yaml` for the full block plus the TRN-05 passthrough call.
+  `params-gloas-multibn.yaml` for the full block, plus the passthrough call that simulates a late
+  beacon-node upgrade.
 
 ### Network faults and CL lifecycle
 
