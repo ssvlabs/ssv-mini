@@ -1,0 +1,8 @@
+# Paths Kurtosis must NOT upload with the package (gitignore syntax, package root).
+#
+# `make fault` archives each operator's logs here (FAULT_LOG_DIR, default .fault-logs). Longer run
+# ladders write hundreds of MB, and `kurtosis run` uploads the whole package directory.
+.fault-logs/
+.params.generated.yaml
+.git/
+.idea/

@@ -1,0 +1,5 @@
+FROM node/ssv
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+    iproute2 && \
+    rm -rf /var/lib/apt/lists/*
