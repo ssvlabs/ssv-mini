@@ -192,11 +192,14 @@ prepare-monitor:
 .PHONY: prepare-all
 prepare-all: prepare-ssv prepare-anchor prepare-monitor
 
-.PHONY: prepare-blindspot-proxy
-prepare-blindspot-proxy:
-	@echo "Building blindspot-proxy image..."
-	@docker build -t blindspot-proxy tests/blindspot-proxy
+# cl-proxy backs both blindspot_pairs (spec strip) and cl_proxy_pairs (runtime produce rules).
+.PHONY: prepare-cl-proxy prepare-blindspot-proxy
+prepare-cl-proxy:
+	@echo "Building cl-proxy image..."
+	@docker build -t cl-proxy tests/cl-proxy
 	@echo "Done."
+
+prepare-blindspot-proxy: prepare-cl-proxy
 
 # ── Fault injection (EL node management) ─────────────────────────────
 
@@ -327,6 +330,42 @@ start-cl:
 .PHONY: test-netem
 test-netem:
 	@./tests/netem/run-tests.sh
+
+# ── Beacon-API fault proxy (cl_proxy_pairs) ──────────────────────────
+# A cl-proxy sits between the operators that operator_pairs puts on it and one beacon node. Its
+# produce rules switch a produceBlockV4 version skew on and off with the SSV nodes still running:
+#   post-405              POST -> 405; the node's GET fallback is served (translated to the CL's POST)
+#   no-include-payload    include_payload=false sent (MODE=remove omits it) -> self-build block without its payload
+#   version-header        Eth-Consensus-Version of the produce response -> VALUE (default fulu)
+# SLOTS=a,b limits a rule to those produce slots. The proxy's access log is the record of the
+# node's silent POST -> GET fallback. Runbook: CLAUDE.md "Beacon-API Fault Proxy".
+PROXY?=cl-proxy-0
+
+.PHONY: cl-proxy-rule
+cl-proxy-rule:
+	@test -n "$(RULE)" || { echo "Error: RULE is required: post-405 | no-include-payload | version-header"; exit 1; }
+	@test -n "$(STATE)" || { echo "Error: STATE=on|off is required"; exit 1; }
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/cl-proxy rule --proxy "$(PROXY)" --rule "$(RULE)" --state "$(STATE)" \
+		--slots "$(SLOTS)" --translate-get "$(TRANSLATE_GET)" --value "$(VALUE)" --mode "$(MODE)"
+
+.PHONY: cl-proxy-reset
+cl-proxy-reset:
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/cl-proxy reset --proxy "$(PROXY)"
+
+.PHONY: cl-proxy-show
+cl-proxy-show:
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/cl-proxy show --proxy "$(PROXY)"
+
+# N=entries (default 50); PRODUCE=1 keeps only the produceBlockV4 route. The in-proxy buffer holds
+# the last 5000 requests; the full history is `docker logs <proxy> | grep '^cl-proxy-access '`.
+.PHONY: cl-proxy-log
+cl-proxy-log:
+	@ENCLAVE_NAME=$(ENCLAVE_NAME) ./scripts/cl-proxy log --proxy "$(PROXY)" --n "$(or $(N),50)" \
+		$(if $(filter 1,$(PRODUCE)),--produce,)
+
+.PHONY: test-cl-proxy
+test-cl-proxy:
+	@./tests/cl-proxy/run-tests.sh
 
 # ── SSV node fault menu ──────────────────────────────────────────────
 # The instrumented node reads FAULT once at boot, so switching a fault means a
@@ -644,6 +683,13 @@ help:
 	@echo "  make stop-cl OP=3 / start-cl OP=3         That operator's beacon node (refuses if shared)"
 	@echo "  EL_SERVICE=el-2-geth-lighthouse make stop-el   Target specific EL"
 	@echo ""
+	@echo "Beacon-API fault proxy (cl_proxy_pairs; PROXY=cl-proxy-0 default):"
+	@echo "  make cl-proxy-rule RULE=post-405 STATE=on [SLOTS=130]   POST produce -> 405, GET fallback served"
+	@echo "  make cl-proxy-rule RULE=no-include-payload STATE=on     self-build block without its payload"
+	@echo "  make cl-proxy-rule RULE=version-header STATE=on [VALUE=fulu]   rewrite produce Eth-Consensus-Version"
+	@echo "  make cl-proxy-reset / cl-proxy-show                     all rules off / rules + hit counts"
+	@echo "  make cl-proxy-log [N=50] [PRODUCE=1]                    access log (method path query status size)"
+	@echo ""
 	@echo "Fault injection (SSV node, needs the node/ssv-fault image):"
 	@echo "  make fault-list                           List available FAULT values"
 	@echo "  make fault FAULT=vote-index-2 OP=3         Archive OP's logs, switch its fault, verify banner"
@@ -656,7 +702,7 @@ help:
 	@echo "  make prepare-anchor  Build Anchor image (default: unstable)"
 	@echo "  make prepare-monitor Build Monitor image"
 	@echo "  make prepare-all     Build all images"
-	@echo "  make prepare-blindspot-proxy             Build the fork blind-spot proxy image"
+	@echo "  make prepare-cl-proxy                    Build the cl-proxy image (blind-spot + produce-skew proxy)"
 	@echo ""
 	@echo "Network scenarios:"
 	@echo "  make run                             Default: Fulu at genesis"
@@ -664,6 +710,7 @@ help:
 	@echo "  make run-boole-interop               Boole fork, 2 SSV + 2 Anchor committee (cross-client interop)"
 	@echo "  make run-gloas                       Gloas/ePBS fork, epoch 2 (GLOAS_FORK_EPOCH=N to retune; devnet-6 images)"
 	@echo "  make run-gloas-multibn                   Gloas with one beacon node per operator"
+	@echo "  make run-gloas-builder               Gloas + buildoor ePBS builder + SSV Builders overlay"
 	@echo "  make run PARAMS_FILE=custom.yaml     Custom params"
 	@echo ""
 	@echo "Configuration:"
@@ -676,7 +723,9 @@ help:
 	@echo "Tests:"
 	@echo "  make test-faulty-el  Bloom filter cross-check test (needs bloom-check SSV)"
 	@echo "  make test-netem      Unit tests for the netem helpers (no enclave needed)"
+	@echo "  make test-cl-proxy   cl-proxy rules, access log and control script (no enclave needed)"
 	@echo "  make test-topology                       Run the operator_pairs validation suite"
+	@echo "  make test-builders                       Run the ssv_builders / buildoor validation suite"
 
 # ── Network scenarios ────────────────────────────────────────────────
 
@@ -703,6 +752,13 @@ run-gloas-multibn:
 	@echo "──── Starting SSV testnet (Gloas/ePBS, one BN per operator) ────"
 	@$(MAKE) --no-print-directory run PARAMS_FILE=params-gloas-multibn.yaml
 
+# Gloas + an external ePBS builder (buildoor on cl-2) and the SSV Builders overlay. See README.md,
+# "Gloas builder rig (buildoor)".
+.PHONY: run-gloas-builder
+run-gloas-builder:
+	@echo "──── Starting SSV testnet (Gloas/ePBS + buildoor builder rig) ────"
+	@$(MAKE) --no-print-directory run PARAMS_FILE=params-gloas-builder.yaml
+
 # ── Tests ────────────────────────────────────────────────────────────
 
 .PHONY: test-faulty-el
@@ -712,3 +768,7 @@ test-faulty-el:
 .PHONY: test-topology
 test-topology:
 	@./tests/topology/run-tests.sh
+
+.PHONY: test-builders
+test-builders:
+	@./tests/builders/run-tests.sh

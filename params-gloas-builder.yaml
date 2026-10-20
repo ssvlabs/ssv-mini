@@ -1,0 +1,136 @@
+# Gloas / ePBS (EIP-7732) BUILDER RIG profile: params-gloas.yaml plus an external ePBS builder
+# (ethpandaops/buildoor) and the SSV `Builders` direct-builder overlay. Used by the builder QA cards
+# (ssv-scout scenarios/gloas/BLD-A-*, BLD-B-*), plan item P0.5.
+# Usage: SSV_COMMIT=stage make prepare && make run-gloas-builder
+#        (or: make run PARAMS_FILE=params-gloas-builder.yaml)
+# Procedure, timings and proof commands: README.md, "Gloas builder rig (buildoor)".
+#
+# Differences from params-gloas.yaml (keep everything else identical, so results compare):
+#   1. The two Lodestar participants are written out (count: 1 each) so each can differ:
+#      - cl-1 (pair 0): the SSV operators' beacon node. cl_log_level debug, so Lodestar's bid
+#        selection lines are readable ("Builder bid candidate", "Best p2p bid below configured
+#        minimum", "Ignoring invalid builder API bid").
+#      - cl-2 (pair 1): buildoor's beacon node. --emitPayloadAttributes, which buildoor builds on.
+#      The SSV operators MUST stay off cl-2. Since Lodestar v1.47 (ChainSafe/lodestar#9998) a beacon
+#      node does not add bids published through its own API to its own bid pool, so cl-2's proposers
+#      never see buildoor's p2p bids; cl-1 receives them over gossip. main.star fails the run when an
+#      operator uses the builder's pair (primary or fallback).
+#      Consequence: buildoor's p2p bids can win only cl-1 proposals (the SSV cluster and cl-1's VC).
+#      cl-2's VC proposals always self-build. That is expected, not a fault.
+#   2. buildoor (nodes/buildoor/buildoor.star) runs as an ssv-mini service on pair 1. Its builder is
+#      NOT registered at genesis (builder_count needs Gloas at genesis); --lifecycle deposits it
+#      after the fork (epoch 2), and it becomes active a few epochs later.
+#   3. ssv_builders points every operator's `Builders` block at buildoor (http://buildoor:8080).
+#   4. spamoor sends fixed-tip transfers, so the local payload has a known non-zero value.
+#   5. pre_register_validators: true, so the SSV cluster runs the 10 static validators and gets
+#      proposals with no aetheria executor. Do NOT run an executor validator suite on this enclave.
+#   6. monitor (E2M) on: the builder cards read E2M proposal outcomes (exec-data checks are stubbed after
+#      the fork). It costs extra memory next to buildoor; watch the Docker VM floor.
+# Client pins are the same as params-gloas.yaml; see that file for their history.
+# ethereum-package stays on 6.1.0 (main.star). Do not bump it for buildoor: its 6.1.0 buildoor
+# integration predates the launcher fixes, which is why buildoor is an ssv-mini service.
+
+network:
+  participants:
+  # Pair 0: cl-1-lodestar-geth / el-1-geth-lodestar. The SSV operators' beacon node.
+  - el_type: geth
+    el_image: ethereum/client-go:v1.17.7@sha256:6e9669cca5359cdb2c5571198d51e78fc18128b56bff50a1f8422d1c2946fd64
+    cl_type: lodestar
+    cl_image: chainsafe/lodestar:v1.49.0@sha256:c13eac6aada7fe3adbc6232ad72726081746bfea4c27563a637977066f835a23
+    cl_log_level: debug
+    # 32 + 32 = 64 VC validators, the same layout as params-gloas.yaml (32 x count 2).
+    validator_count: 32
+    count: 1
+    supernode: true
+  # Pair 1: cl-2-lodestar-geth / el-2-geth-lodestar. buildoor's beacon node. No SSV operator here.
+  - el_type: geth
+    el_image: ethereum/client-go:v1.17.7@sha256:6e9669cca5359cdb2c5571198d51e78fc18128b56bff50a1f8422d1c2946fd64
+    cl_type: lodestar
+    cl_image: chainsafe/lodestar:v1.49.0@sha256:c13eac6aada7fe3adbc6232ad72726081746bfea4c27563a637977066f835a23
+    cl_extra_params:
+      - --emitPayloadAttributes
+    validator_count: 32
+    count: 1
+    supernode: true
+
+  additional_services:
+    - dora
+
+  dora_params:
+    image: ethpandaops/dora:master-c249d29@sha256:12d22730d8b7cb924078e1ccac21d95609e5e1d4562b138cb43a9cf3bc6b380f
+
+  ethereum_genesis_generator_params:
+    image: ethpandaops/ethereum-genesis-generator:6.2.1@sha256:15bb557cbd6d29fc1b7516a7147326a8c8d3af54f3c3ac534ec8772f6e875256
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0
+    gloas_fork_epoch: 2
+    perfect_peerdas_enabled: false
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+# buildoor, the ePBS builder (nodes/buildoor/buildoor.star). Keys:
+#   enabled           false = no builder (the rest of the profile still runs)
+#   pair              participant index (0-based) buildoor attaches to. Never an operator's pair.
+#   image             default: the digest pin in buildoor.star (buildoor main changes daily)
+#   wallet_account    PRE_FUNDED_ACCOUNTS index of the lifecycle wallet (default 13)
+#   epbs_bid_subsidy  gwei added to every p2p bid (default 1 ETH: clears any local payload here)
+#   log_level         default debug
+#   extra_args        appended to buildoor's command line; a repeated flag wins (last one)
+# Runtime control: buildoor's API on port 8080 (e.g. POST /api/buildoor/action-plan). See README.
+buildoor:
+  enabled: true
+  pair: 1
+  epbs_bid_subsidy: 1000000000
+  extra_args: []
+
+# spamoor (nodes/buildoor/spamoor.star): EOA transfers at a FIXED tip into el-1.
+# Local value per block ~= throughput * 21000 * tipfee_gwei = 10 * 21000 * 2 = 420,000 gwei.
+spamoor:
+  enabled: true
+  throughput: 10
+  tipfee_gwei: 2
+  basefee_gwei: 20
+
+# The SSV `Builders` block (utils/builders.star). `shared` goes to every operator; `overrides`
+# replaces it whole for one GLOBAL operator index ({} = no block for that operator). Keys are the
+# node's own (docs/EXTERNAL_BUILDERS.md). AuthData defaults to the URL's hostname, "buildoor",
+# which is what buildoor checks against its --builder-api-url. Every operator of a committee must
+# carry the identical list, or the request auth does not reconstruct; an override that diverges is
+# a test case, not a default. Delete this block for a p2p-only run.
+ssv_builders:
+  shared:
+    Entries:
+      - URL: "http://buildoor:8080"
+  overrides: {}
+
+use_static_keys: true
+pre_register_validators: true
+pre_register_count: 0
+unsafe_skip_validator_layout_guard: false
+
+monitor:
+  enabled: true
+
+boole_epoch: 1000000000   # dormant: Glamsterdam ships pre-Boole (see params-gloas.yaml)
+
+nodes:
+  ssv:
+    count: 4
+  anchor:
+    count: 0
+  exporter:
+    enabled: true
+
+images:
+  ssv: "node/ssv"
+  anchor: "sigp/anchor:v1.2.0"
+  monitor: "monitor"
+  redis: "redis:7.4.2"
+  postgres: "postgres:15"
+  deployer: "localssv/ssv-network"

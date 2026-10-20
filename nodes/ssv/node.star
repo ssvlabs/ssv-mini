@@ -15,6 +15,7 @@ def generate_config(
         enr,
         is_exporter,
         args,
+        builders_yaml = "",
 ):
     boole_epoch = args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH)
     # Traces are opt-in (params key: nodes.ssv.enable_traces, default False). Nothing in this repo
@@ -62,6 +63,8 @@ def generate_config(
         MetricsAPIPort=SSV_METRICS_PORT,
         EnableTraces=enable_traces,
         BooleEpoch=boole_epoch,
+        # Top-level `Builders:` block (utils/builders.star), already JSON-encoded; "" = omitted.
+        BuildersYAML=builders_yaml,
     )
 
     ssv_config_template = read_file("config.yml.tmpl")

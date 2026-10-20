@@ -14,6 +14,9 @@ keysplit = import_module("./generators/keysplit.star")
 constants = import_module("./utils/constants.star")
 monitor = import_module("./monitor/monitor.star")
 cluster = import_module("./nodes/cluster.star")
+buildoor = import_module("./nodes/buildoor/buildoor.star")
+spamoor = import_module("./nodes/buildoor/spamoor.star")
+builders = import_module("./utils/builders.star")
 
 def run(plan, args):
     ssv_node_count = args["nodes"]["ssv"]["count"]
@@ -90,11 +93,27 @@ def run(plan, args):
     if pre_register_count > 0 and not args.get("pre_register_validators", False):
         fail("pre_register_count ({}) > 0 requires pre_register_validators: true — otherwise Step 4 is skipped and nothing registers while cohort P is expected. Set pre_register_validators: true (or PRE_REGISTER_VALIDATORS=true), or drop the count.".format(pre_register_count))
 
+    # Gloas builder rig (params-gloas-builder.yaml). Validated here, before anything starts.
+    # buildoor_cfg / spamoor_cfg are None unless their params block sets enabled: true;
+    # ssv_builders resolves to one `Builders` block (or None) per global operator index.
+    buildoor_cfg = buildoor.get_args(args)
+    if buildoor_cfg != None:
+        buildoor.validate(buildoor_cfg, args)
+    spamoor_cfg = spamoor.get_args(args)
+    ssv_builders = builders.resolve(args, ssv_node_count + anchor_node_count)
+
     ethereum_network = ethereum_package.run(plan, network_args)
 
     topology = topo.build(plan, args, ethereum_network.all_participants)
 
     blocks.wait_until_node_reached_block(plan, topology.infra.el_service, 1)
+
+    # Started right after the chain is up so buildoor is listening well before the Gloas fork
+    # (its lifecycle deposit waits for the fork) and spamoor's load is steady by then.
+    if buildoor_cfg != None:
+        buildoor.start(plan, buildoor_cfg, ethereum_network.all_participants, genesis_constants)
+    if spamoor_cfg != None:
+        spamoor.start(plan, spamoor_cfg, ethereum_network.all_participants, genesis_constants)
 
     # ── Step 2: Deploy SSV smart contracts ──
     plan.print("Step 2/5: Deploying SSV smart contracts")
@@ -256,8 +275,12 @@ def run(plan, args):
         ssv_configs = {}
         for _ in range(0, ssv_node_count):
             is_exporter = False
-            config = ssv_node.generate_config(plan, node_index, topology.operators[node_index], private_keys[node_index], enr, is_exporter, args)
+            builders_block = ssv_builders[node_index]
+            config = ssv_node.generate_config(plan, node_index, topology.operators[node_index], private_keys[node_index], enr, is_exporter, args,
+                                              builders.render(builders_block))
             service_name = "ssv-node-{}".format(node_index)
+            if builders_block != None:
+                plan.print("  {} -> Builders: {}".format(service_name, builders.render(builders_block)))
             node_gas_limit = gas_limits[node_index] if node_index < len(gas_limits) else 0
             if node_gas_limit > 0:
                 # Printed so "which operator ran which gas limit?" is answerable from the run log

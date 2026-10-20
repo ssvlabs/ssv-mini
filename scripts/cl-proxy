@@ -1,0 +1,178 @@
+#!/bin/bash
+# Runtime control for a cl-proxy (cl_proxy_pairs / blindspot_pairs) in a running enclave.
+#
+# The proxy sits between some SSV operators and one beacon node. Its produce rules switch a
+# beacon-API version skew on and off WITHOUT restarting the SSV nodes, and its access log is the
+# only record of the node's silent POST -> GET produce fallback (no SSV log line marks it).
+# Proxy source and rule semantics: tests/cl-proxy/proxy.go.
+#
+# The control API is on the proxy's own port and is reached with `docker exec <proxy> wget`, so it
+# needs no published host port. The container is resolved by Kurtosis labels scoped to THIS
+# enclave, the same way scripts/netem does it.
+#
+# Usage (normally via the Makefile targets — see `make help`):
+#   scripts/cl-proxy rule  --proxy cl-proxy-0 --rule post-405 --state on [--slots 130,131]
+#                          [--translate-get true|false]            # post-405 only
+#                          [--value fulu]                          # version-header only
+#                          [--mode false|remove]                   # no-include-payload only
+#   scripts/cl-proxy reset --proxy cl-proxy-0                       # every produce rule off
+#   scripts/cl-proxy show  --proxy cl-proxy-0                       # rules, hit counts, spec strip
+#   scripts/cl-proxy log   --proxy cl-proxy-0 [--n 50] [--produce]  # recent access-log entries
+#   scripts/cl-proxy passthrough --proxy blindspot-proxy-0 --state on|off   # spec strip pause
+
+set -uo pipefail
+
+ENCLAVE_NAME=${ENCLAVE_NAME:-localnet}
+CL_PROXY_PORT=${CL_PROXY_PORT:-4000}
+CL_PROXY_RULES="post-405 no-include-payload version-header"
+
+# ─────────────────────────── pure helpers (unit-tested) ───────────────────────────
+
+clproxy_validate_rule() {
+  local r=${1-}
+  case " $CL_PROXY_RULES " in *" $r "*) [ -n "$r" ] && return 0 ;; esac
+  echo "cl-proxy: unknown rule '$r'; known: $CL_PROXY_RULES" >&2
+  return 1
+}
+
+clproxy_validate_state() {
+  case "${1-}" in on|off) return 0 ;; esac
+  echo "cl-proxy: state must be on or off, got '${1-}'" >&2
+  return 1
+}
+
+# Comma-separated slot numbers, no spaces. Empty means "every slot" and is valid.
+clproxy_validate_slots() {
+  local s=${1-}
+  [ -z "$s" ] && return 0
+  if [[ "$s" =~ ^[0-9]+(,[0-9]+)*$ ]]; then return 0; fi
+  echo "cl-proxy: slots must be comma-separated slot numbers (e.g. 130,131), got '$s'" >&2
+  return 1
+}
+
+clproxy_validate_bool() {
+  case "${1-}" in true|false) return 0 ;; esac
+  echo "cl-proxy: expected true or false, got '${1-}'" >&2
+  return 1
+}
+
+clproxy_validate_name() {
+  if [[ "${1-}" =~ ^(cl-proxy|blindspot-proxy)-[0-9]+$ ]]; then return 0; fi
+  echo "cl-proxy: PROXY must be a proxy service name such as cl-proxy-0, got '${1-}'" >&2
+  return 1
+}
+
+# clproxy_rule_query <rule> <state> <slots> <translate_get> <value> <mode> -> the /_qa/rule query string.
+# Options that do not apply to the rule are refused here, before anything is sent, so a typo
+# cannot arm a different rule from the one the operator meant.
+clproxy_rule_query() {
+  local rule=$1 state=$2 slots=${3-} tg=${4-} value=${5-} mode=${6-}
+  clproxy_validate_rule "$rule" || return 1
+  clproxy_validate_state "$state" || return 1
+  clproxy_validate_slots "$slots" || return 1
+  if [ -n "$tg" ]; then
+    [ "$rule" = "post-405" ] || { echo "cl-proxy: --translate-get applies to post-405 only" >&2; return 1; }
+    clproxy_validate_bool "$tg" || return 1
+  fi
+  if [ -n "$value" ]; then
+    [ "$rule" = "version-header" ] || { echo "cl-proxy: --value applies to version-header only" >&2; return 1; }
+    [[ "$value" =~ ^[a-z0-9]+$ ]] || { echo "cl-proxy: --value must be a fork name like fulu, got '$value'" >&2; return 1; }
+  fi
+  if [ -n "$mode" ]; then
+    [ "$rule" = "no-include-payload" ] || { echo "cl-proxy: --mode applies to no-include-payload only" >&2; return 1; }
+    case "$mode" in false|remove) ;; *) echo "cl-proxy: --mode must be false or remove, got '$mode'" >&2; return 1 ;; esac
+  fi
+  local q="name=$rule&state=$state"
+  [ -n "$slots" ] && q="$q&slots=$slots"
+  [ -n "$tg" ] && q="$q&translate_get=$tg"
+  [ -n "$value" ] && q="$q&value=$value"
+  [ -n "$mode" ] && q="$q&mode=$mode"
+  printf '%s\n' "$q"
+}
+
+# ─────────────────────────── live helpers (need an enclave) ───────────────────────────
+
+clproxy_container() {
+  local svc=$1 uuid ids n
+  uuid=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids 2>/dev/null | awk '/^UUID:/{print $2}')
+  [ -n "$uuid" ] || { echo "cl-proxy: enclave '$ENCLAVE_NAME' was not found (kurtosis enclave ls)." >&2; return 1; }
+  ids=$(docker ps --filter "label=kurtosis_service_name=$svc" \
+                  --filter "label=kurtosis_enclave_uuid=$uuid" --format '{{.ID}}')
+  n=$(printf '%s\n' "$ids" | grep -c .)
+  if [ "$n" -ne 1 ]; then
+    echo "cl-proxy: service '$svc' matched $n running containers in enclave '$ENCLAVE_NAME' (want 1)." >&2
+    echo "          Is cl_proxy_pairs set in the params file? Proxies: $(docker ps --filter "label=kurtosis_enclave_uuid=$uuid" --format '{{.Label "kurtosis_service_name"}}' | grep -E 'proxy' | tr '\n' ' ')" >&2
+    return 1
+  fi
+  printf '%s\n' "$ids"
+}
+
+# clproxy_call <container> GET|POST <path?query> [post-body]
+clproxy_call() {
+  local c=$1 method=$2 pq=$3 body=${4-}
+  local url="http://127.0.0.1:${CL_PROXY_PORT}${pq}"
+  if [ "$method" = "POST" ]; then
+    docker exec "$c" wget -qO- --post-data="$body" "$url"
+  else
+    docker exec "$c" wget -qO- "$url"
+  fi
+}
+
+clproxy_cmd() {
+  local verb=$1; shift
+  local proxy="" rule="" state="" slots="" tg="" value="" mode="" n=50 produce=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --proxy) proxy=$2; shift 2 ;;
+      --rule) rule=$2; shift 2 ;;
+      --state) state=$2; shift 2 ;;
+      --slots) slots=$2; shift 2 ;;
+      --translate-get) tg=$2; shift 2 ;;
+      --value) value=$2; shift 2 ;;
+      --mode) mode=$2; shift 2 ;;
+      --n) n=$2; shift 2 ;;
+      --produce) produce=1; shift ;;
+      *) echo "cl-proxy: unknown argument '$1'" >&2; return 1 ;;
+    esac
+  done
+  clproxy_validate_name "$proxy" || return 1
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "cl-proxy: --n must be a number, got '$n'" >&2; return 1; }
+
+  local q c
+  case "$verb" in
+    rule)
+      q=$(clproxy_rule_query "$rule" "$state" "$slots" "$tg" "$value" "$mode") || return 1
+      c=$(clproxy_container "$proxy") || return 1
+      echo "cl-proxy: $proxy: $q" >&2
+      clproxy_call "$c" POST "/_qa/rule?$q" || { echo "cl-proxy: the proxy refused the rule (see: make cl-proxy-show)" >&2; return 1; }
+      ;;
+    reset)
+      c=$(clproxy_container "$proxy") || return 1
+      clproxy_call "$c" POST "/_qa/reset"
+      ;;
+    show)
+      c=$(clproxy_container "$proxy") || return 1
+      clproxy_call "$c" GET "/_qa/rules"
+      ;;
+    log)
+      c=$(clproxy_container "$proxy") || return 1
+      if [ "$produce" = 1 ]; then
+        clproxy_call "$c" GET "/_qa/log?n=$n&produce=1"
+      else
+        clproxy_call "$c" GET "/_qa/log?n=$n"
+      fi
+      ;;
+    passthrough)
+      clproxy_validate_state "$state" || return 1
+      c=$(clproxy_container "$proxy") || return 1
+      clproxy_call "$c" POST "/_qa/passthrough" "$state"
+      ;;
+    *) echo "cl-proxy: unknown command '$verb'" >&2; return 1 ;;
+  esac
+}
+
+# Only run when executed, so tests/cl-proxy/run-tests.sh can source the helpers.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  [ $# -gt 0 ] || { sed -n '/^# Usage/,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+  clproxy_cmd "$@"
+fi

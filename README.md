@@ -201,8 +201,9 @@ use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
 - `params-boole.yaml` — Alan→Boole fork transitions; needs `SSV_COMMIT=integration/boole-convergence make prepare`
-- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
-- `params-gloas-multibn.yaml` — same Gloas transition, but each operator gets its own beacon/execution node pair instead of sharing one (see `operator_pairs` below); needs the same `SSV_COMMIT=epbs-gloas make prepare`
+- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=stage make prepare` and ethpandaops glamsterdam-devnet-6 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
+- `params-gloas-multibn.yaml` — same Gloas transition, but each operator gets its own beacon/execution node pair instead of sharing one (see `operator_pairs` below); needs the same `SSV_COMMIT=stage make prepare`
+- `params-gloas-builder.yaml` — same Gloas transition plus an external ePBS builder (buildoor) and the SSV `Builders` overlay; `make run-gloas-builder`. See "Gloas builder rig (buildoor)" below
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml
@@ -258,9 +259,139 @@ operator_pairs: [[0], [1], [2], [4]]  # op3 now points at pair 4, the proxy
   purpose: a test (or alert) for an unscheduled fork watches for the *missing* Info line.
 - Limits: the proxy only sits on the CL path (the EL is the upstream pair's, untouched), and
   it adds a network hop — never route timing or fault-injection scenarios through it.
-- Requires `make prepare-blindspot-proxy` before bring-up. See the commented example in
-  `params-gloas-multibn.yaml` for the full block, plus the passthrough call that simulates a late
-  beacon-node upgrade.
+- Requires `make prepare-cl-proxy` (alias: `make prepare-blindspot-proxy`) before bring-up. See the
+  commented example in `params-gloas-multibn.yaml` for the full block, plus the passthrough call that
+  simulates a late beacon-node upgrade.
+
+### Beacon-API fault proxy (`cl_proxy_pairs`)
+
+The blind-spot proxy is one mode of `cl-proxy` (`tests/cl-proxy/`). `cl_proxy_pairs` starts the same
+proxy with no spec rewrite. Its produceBlockV4 rules are armed at runtime, with the SSV nodes still
+running, and it access-logs every request. It exists for the produce version-skew card (ssv-scout
+`scenarios/gloas/BLD-B-05.md`).
+
+```yaml
+cl_proxy_pairs:
+  - upstream: 0                         # cl-1; on params-gloas.yaml (2 real pairs) this is pair 2
+operator_pairs: [[2], [2], [2], [2]]    # every operator behind the proxy
+```
+
+```bash
+make cl-proxy-rule RULE=post-405 STATE=on SLOTS=130       # POST 405 -> node's GET fallback (served)
+make cl-proxy-rule RULE=no-include-payload STATE=on SLOTS=140   # include_payload=false
+make cl-proxy-rule RULE=version-header STATE=on SLOTS=150 # Eth-Consensus-Version -> fulu
+make cl-proxy-log PRODUCE=1                               # method path query status sizes
+make cl-proxy-reset
+```
+
+Rule semantics, the Lodestar GET-route caveat and the runbook are in `CLAUDE.md` ("Beacon-API Fault
+Proxy"). Tests that need no enclave: `make test-cl-proxy`.
+
+### Gloas builder rig (buildoor)
+
+`params-gloas-builder.yaml` adds an external ePBS builder to the Gloas net, for the builder QA cards
+(ssv-scout `scenarios/gloas/BLD-*`). It is `params-gloas.yaml` with these changes:
+
+| Piece | What it does |
+|---|---|
+| `buildoor` (`nodes/buildoor/buildoor.star`) | [ethpandaops/buildoor](https://github.com/ethpandaops/buildoor), digest-pinned, as an ssv-mini service on **pair 1** (`cl-2`/`el-2`). It bids over p2p and serves the builder API at `http://buildoor:8080`. `--lifecycle` deposits and tops up its builder from prefunded account 13. |
+| `cl-2` | `--emitPayloadAttributes` (buildoor builds on that SSE event). |
+| `cl-1` | `cl_log_level: debug`, so Lodestar's bid-selection lines are readable. The SSV operators use `cl-1` only. |
+| `ssv_builders` (`utils/builders.star`) | Renders the node's top-level `Builders` block. Here every operator points at buildoor. |
+| `spamoor` (`nodes/buildoor/spamoor.star`) | 10 transfers per slot at a fixed 2 gwei tip into `el-1`, so the local payload is worth ~0.00042 ETH, not 0. |
+| `pre_register_validators: true` | The cluster runs the 10 static validators, so it gets proposals without the aetheria executor. |
+| `monitor` on | The builder cards read E2M proposal outcomes (exec-data checks are stubbed after the fork). Costs extra memory next to buildoor. |
+
+ethereum-package stays on 6.1.0. Its own `mev_type: buildoor` predates the launcher fixes on its
+`main` branch, which is why buildoor is an ssv-mini service here.
+
+**Never put an SSV operator on the builder's beacon node.** Since Lodestar v1.47
+(ChainSafe/lodestar#9998) a beacon node does not add bids published through its own API to its own
+bid pool, so proposers on `cl-2` never see buildoor's p2p bids. `cl-1` receives them over gossip.
+`main.star` fails the run if any operator lists the builder's pair, as primary, as fallback or behind
+a blind-spot proxy. A consequence you will see: `cl-2`'s own VC proposals always self-build.
+
+```bash
+SSV_COMMIT=stage make prepare   # an SSV build that has the Builders overlay
+make run-gloas-builder
+```
+
+**Timeline** (measured 2026-10-20 on SSV `stage` f0d143543, buildoor a5a6bfa, Lodestar v1.49.0):
+
+| Event | Slot / epoch | Since genesis |
+|---|---|---|
+| `kurtosis run` returns (SSV nodes up) | ~41 / 1 | ~8 min (whole bring-up ~9 min) |
+| buildoor "early onboarding" deposit through the regular deposit contract | block 2 | 25 s |
+| Gloas fork; buildoor logs `Builder registered builder_index=0` | 64 / 2 | 12.8 min |
+| First `submitBuilderPreferences: stored builder preference` | epoch 2 | 15.8 min |
+| Builder API answers `204 — no builder key active on chain` until... | 119 / 3 | 23.8 min |
+| Builder active: first p2p bid wins (`bidSource=p2p`) | 129 / 4 | 25.8 min |
+| First SSV cluster proposal won by the builder; first `SignedRequestAuth verified` | 135 / 4 | 27.0 min |
+
+The builder became active at epoch 4 because buildoor's early deposit lands in block 2, before
+the fork. A builder deposited through the builder contract after the fork activates later (not
+measured here). Budget **~30 min** from `make run-gloas-builder` to the first
+cluster slot the builder can win.
+
+**Proof checks** (each one passed in the run above):
+
+```bash
+# 1. The cluster proposed with a builder's bid: self_build=false, identical on all 4 operators.
+for n in 0 1 2 3; do kurtosis service logs -a localnet ssv-node-$n | grep 'decided gloas block build source' | grep -o '"slot":[0-9]*,"self_build":[a-z]*' | tail -5; done
+
+# 2. Which bid won, and why (cl-1 debug). Expect source=p2p ranked over source=http://buildoor:8080.
+kurtosis service logs -a localnet cl-1-lodestar-geth | grep -E 'Builder bid candidate|Selected (builder|local) block' | grep 'slot=<SLOT>,'
+
+# 3. The direct-builder overlay reached buildoor.
+kurtosis service logs -a localnet buildoor | grep -E 'SignedRequestAuth verified|stored builder preference'
+```
+
+With the default `epbs_bid_subsidy` (1 ETH) the p2p bid always outranks buildoor's builder-API bid
+(its block value plus `--builder-api-subsidy`, default 100,000 gwei; 0.00052 ETH in the run above), so the overlay is exercised (auth, preferences, bid request) while p2p wins.
+To make the builder-API bid win, raise `--builder-api-subsidy` in `buildoor.extra_args`.
+
+**Withhold a reveal (Empty slot).** buildoor's API is open on port 8080; per-slot action plans
+override what it does. Pick a cluster proposal slot after the builder is active:
+
+```bash
+curl -s http://127.0.0.1:33001/eth/v1/validator/duties/proposer/<EPOCH> | jq -c '.data[] | select((.validator_index|tonumber) >= 64 and (.validator_index|tonumber) < 74) | .slot'
+BP=$(kurtosis port print localnet buildoor api)
+curl -s -X POST $BP/api/buildoor/action-plan -H 'Content-Type: application/json' \
+  -d '{"updates":[{"slots":[<SLOT>],"reveal":{"mode":"disabled"}}]}'
+```
+
+At that slot buildoor logs `Reveal suppressed reason=plan_disabled`, and the NEXT block's
+`signed_execution_payload_bid.message.parent_block_hash` is the payload hash of the slot BEFORE it
+(`curl -s $CL/eth/v2/beacon/blocks/<SLOT+1>`), so `<SLOT>` is Empty. buildoor then logs
+`Won bid was NOT revealed — payment pending for 2 epochs`. Other plan categories: `bid`,
+`builder_api`, `build` (see buildoor's `pkg/action_plan/types.go`). The web UI is at `$BP`.
+
+**`ssv_builders` (the `Builders` block).** `shared` goes to every SSV operator. `overrides` maps a
+GLOBAL operator index to a block that REPLACES `shared` for that operator, and `{}` means "no block".
+Keys are the node's own (`docs/EXTERNAL_BUILDERS.md` in the ssv repo); unknown keys fail the run,
+because the node's YAML decoder would silently drop them. The exporter never gets the block.
+
+```yaml
+ssv_builders:
+  shared:
+    BuilderBoostFactor: 100
+    Entries:
+      - URL: "http://buildoor:8080"   # default AuthData = the hostname, "buildoor"
+        MaxExecutionPayment: 0
+  overrides:
+    "3":                              # divergent AuthData on op3: splits the request-auth quorum
+      Entries:
+        - URL: "http://buildoor:8080"
+          AuthData: "0x01"
+```
+
+It is a bring-up parameter on purpose: `kurtosis service update` drops a node's file mounts and
+cold-resyncs it, so it is not a way to change `Builders` on a running node. Delete the block for a
+p2p-only run. Run the validation suite with `make test-builders`.
+
+**Known start-up effect.** The proposer-preferences duties a node emits in its first minutes (the
+next epoch's) can fail to reach quorum, so those slots have no request auth and the builder API is
+asked without one. Later epochs are normal. Don't judge the overlay on the first post-start epoch.
 
 ### Network faults and CL lifecycle
 

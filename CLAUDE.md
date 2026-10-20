@@ -52,6 +52,7 @@ cd ../anchor && docker build -f Dockerfile.devnet -t node/anchor .
 Network configuration is controlled via `params.yaml`:
 - `nodes.ssv.count` / `nodes.anchor.count`: Node counts
 - `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
+- `buildoor` / `spamoor` / `ssv_builders`: the Gloas builder rig (see "Gloas Builder Rig" below)
 - `pre_register_validators`: Bulk-register the full static keyshare set on-chain at bring-up under the deployer's owner (default: false; needed for per-validator fork-transition coverage, aetheria#141 A2). Registering the FULL set is incompatible with the executor's validator-registering suites (`(event)`/`(ptc)`/`(proposer)`/`(p2p)`) on the same enclave — both register the same pubkeys → `ValidatorAlreadyExists`. To share one enclave, partition the pool with `pre_register_count` below
 - `pre_register_count`: Partition the static keyshare pool when `pre_register_validators` is true — register only the first N keyshares (cohort P = indices [64, 64+N)), leaving [64+N, 64+SSV_MANAGED_VALIDATOR_COUNT) for the executor to register as its own cohort D. The index-partitioned P⊎D split lets pre-registration and a validator-registering suite share one enclave (aetheria#176). 0 (default) registers the full set (no split); a positive count must be < the pool size so cohort D is non-empty. Only a CONTIGUOUS prefix is nonce-safe (the sharesData nonce sequence is 0-based; ssvlabs/ssv-mini#36). The actual N (plus the cohort P/D pubkey partition and the registration context — owner, operatorIds, SSVNetwork address) is published at bring-up as the `pre-registered.json` enclave artifact (`kurtosis files download <enclave> pre-registered.json`) — the shared source of truth that lets the executor read N and that context instead of re-declaring them across repos (ssvlabs/ssv-mini#53)
 - `unsafe_skip_validator_layout_guard`: Bypass main.star's 64/74 validator-layout guard so a **standalone** base-chain liveness probe can run >64 baseline validators (Gloas devnet stall investigation, ssvlabs/ssv-mini#38). Default false. Safe **only** when no SSV-managed validators are adopted on the enclave (bare run: `pre_register_validators: false` + no executor); combining with `pre_register_validators: true` is rejected in code, and it must not be set against an executor validator suite either, or the extra VCs overlap the seed at 64–73 → double-sign → slashing. See `params-gloas.yaml` for the full contract
@@ -181,6 +182,73 @@ curl -s -X POST -H "Content-Type: application/json" \
   gloas params file unless handed an image explicitly.
 - Verify a fault landed with `make netem-show OP=n`, and prove the scoping by pinging the shaped and
   an unshaped host from inside the operator's namespace rather than assuming.
+
+## Beacon-API Fault Proxy (cl-proxy)
+
+`cl-proxy` (`tests/cl-proxy/proxy.go`) is a reverse proxy between chosen SSV operators and ONE beacon
+node. Everything passes through unchanged until a rule is armed, and every request is access-logged. It
+replaced the old `tests/blindspot-proxy` and runs both `blindspot_pairs` (spec strip, unchanged behaviour)
+and `cl_proxy_pairs` (runtime produce rules). Built for BLD-B-05 (produceBlockV4 version skew).
+
+- **Wiring (params)**: `cl_proxy_pairs: [{upstream: <real pair>}]` appends a pair after the real and
+  blind-spot pairs; point operators at it with `operator_pairs`. On `params-gloas.yaml` (2 real pairs):
+  `cl_proxy_pairs: [{upstream: 0}]` + `operator_pairs: [[2], [2], [2], [2]]`. Image: `make prepare-cl-proxy`
+  (`prepare-blindspot-proxy` is an alias). Rules are not a params key; an unknown key fails the plan.
+- **Rules** (produce route `/eth/v4/validator/blocks/{slot}` only; `SLOTS=a,b` limits one to those slots):
+  - `post-405`: POST → 405 without reaching the CL, so the node falls back to
+    `GET ...&include_payload=true&builder_boost_factor=<n>`. **Lodestar ≥ v1.49.0 has no GET route** (only
+    the #630 POST), so by default the proxy serves that GET by forwarding it upstream as a POST with a
+    neutral BuilderConfig carrying the GET's boost factor: a #580 GET-only CL, emulated. `TRANSLATE_GET=false`
+    forwards the GET untouched instead → the CL's own 404 → a CL that serves neither shape.
+  - `no-include-payload`: the CL does not get `include_payload=true` (POST or GET). Default `MODE=false`
+    sends `include_payload=false`; a self-building CL then answers with the bare block
+    (`Eth-Execution-Payload-Included: false`), i.e. a CL that ignores the flag. `MODE=remove` deletes the
+    parameter instead, but **Lodestar v1.49.0 treats it as required** and answers 400 `must have required
+    property 'include_payload'` (seen live 2026-10-20), so the node fails on the 400, not on the self-build
+    check. Use `MODE=remove` only on a CL that defaults the parameter.
+  - `version-header`: rewrites the 2xx produce response's `Eth-Consensus-Version` to `VALUE` (default `fulu`).
+- **Runtime control, no node restart**: `make cl-proxy-rule RULE=<rule> STATE=on|off [SLOTS=..]
+  [TRANSLATE_GET=..] [VALUE=..] [MODE=..]`, `make cl-proxy-reset`, `make cl-proxy-show` (state + per-rule hit counts),
+  `make cl-proxy-log [N=50] [PRODUCE=1]`. `PROXY=cl-proxy-0` is the default. Implementation: `scripts/cl-proxy`
+  (`docker exec <proxy> wget` against the proxy's own port, container resolved by enclave labels).
+- **Access log** = the "CL access log" BLD-B-05 needs. One JSON line per request: `method path query status
+  req_bytes resp_bytes dur_ms rules upstream_method upstream_query consensus_version payload_included`.
+  `query` is what the NODE sent; `upstream_*` appear only when a rule changed what went to the CL. The last
+  5000 requests are in `make cl-proxy-log`; the full history is `docker logs <proxy> | grep '^cl-proxy-access '`.
+- **Arm with `SLOTS=<S>`, not open-ended.** Pick the cluster's next proposal slot `S` from the CL's proposer
+  duties and arm for that slot only: the fault then fires exactly once per operator and every other slot stays
+  a clean control. An open-ended `no-include-payload` / `version-header` fails EVERY cluster proposal.
+- **Topology trap**: the node's produce goes through `firstClientResult`, so an operator with a fallback pair
+  in `operator_pairs` would quietly retry the real CL after the proxied failure. Give proxied operators the
+  proxy pair only.
+- Tests (no enclave): `make test-cl-proxy` (Go rule tests against a fake POST-only CL + `scripts/cl-proxy`
+  helpers); `make test-topology` covers `cl_proxy_pairs` validation.
+- Limits: CL path only (the EL is the upstream pair's). It adds one local hop, so do not route timing
+  scenarios through it.
+
+## Gloas Builder Rig (buildoor)
+
+- **Profile**: `params-gloas-builder.yaml`, `make run-gloas-builder`. Full procedure, measured timeline
+  and proof commands: README "Gloas builder rig (buildoor)". Validation suite: `make test-builders`.
+- **Modules**: `nodes/buildoor/buildoor.star` (builder, digest-pinned image), `nodes/buildoor/spamoor.star`
+  (fixed-tip load), `utils/builders.star` (`ssv_builders` -> the node's top-level `Builders` block, rendered
+  as JSON into `config.yml.tmpl`). All three are validated in `main.star` BEFORE ethereum-package starts.
+- **Topology rule**: buildoor attaches to pair 1 (`cl-2`); SSV operators stay on `cl-1`. Lodestar >= v1.47
+  does not add API-published bids to its own bid pool, so an operator on the builder's CL never sees its p2p
+  bids. `buildoor.validate` fails the run on any operator (primary, fallback or blind-spot proxy) on that pair.
+  `cl-2`'s own VC proposals always self-build; that is expected.
+- **Do not bump ethereum-package off 6.1.0** to get its `mev_type: buildoor`; 6.1.0's integration predates the
+  launcher fixes on its main. Bumping it moves every client default at once.
+- **`Builders` is a bring-up parameter.** Never change it with `kurtosis service update` (drops file mounts,
+  cold-resyncs the node). `overrides` REPLACES `shared` for one global operator index; `{}` = no block.
+- **Timing**: builder registered at the fork (slot 64), active at epoch 4 (first win slot 129, first cluster
+  win slot 135, ~27 min after genesis). Before that buildoor answers the builder API with
+  `204 - no builder key active on chain`; that is not a wiring fault.
+- **Runtime control**: `POST $(kurtosis port print localnet buildoor api)/api/buildoor/action-plan`, e.g.
+  `{"updates":[{"slots":[N],"reveal":{"mode":"disabled"}}]}` withholds the payload -> slot N is Empty.
+- **Start-up effect**: the proposer-preferences duties emitted in a node's first minutes can miss quorum
+  (only the node's own partial arrives), so that epoch's proposals carry no request auth. Judge the overlay
+  from the second post-start epoch on.
 
 ## Troubleshooting
 

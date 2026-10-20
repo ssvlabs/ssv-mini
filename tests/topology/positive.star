@@ -85,4 +85,27 @@ def run(plan, args):
         fail("blindspot label must name the proxy service so it stays a valid kurtosis identifier")
     plan.print("  ok  blindspot/label-names-the-proxy-service")
 
+    # cl_proxy pairs (BLD-B-05's produce-skew proxy): no spec rewrite by default, named cl-proxy-N,
+    # and appended after any blind-spot pairs.
+    v = topology.validate_cl_proxy_pairs([], ["cl-1-lodestar-geth"])
+    assert_eq(plan, "clp/empty-is-noop", v.entries, [])
+
+    v = topology.validate_cl_proxy_pairs([{"upstream": 0}], ["cl-1-lodestar-geth", "cl-2-lodestar-geth"])
+    assert_eq(plan, "clp/strip-defaults-to-none", v.entries[0].strip, [])
+    assert_eq(plan, "clp/name", v.entries[0].name, "cl-proxy-0")
+    assert_eq(plan, "clp/label-format", v.labels[0],
+              "cl-proxy-0 -> cl-1-lodestar-geth (runtime produce rules)")
+
+    v = topology.validate_cl_proxy_pairs(
+        [{"upstream": 1}, {"upstream": 0, "strip": ["GLOAS_FORK_EPOCH"]}],
+        ["cl-1-lodestar-geth", "cl-2-lodestar-geth"])
+    assert_eq(plan, "clp/second-upstream", v.entries[1].upstream, 0)
+    assert_eq(plan, "clp/label-with-strip", v.labels[1],
+              "cl-proxy-1 -> cl-1-lodestar-geth (runtime produce rules, strip GLOAS_FORK_EPOCH)")
+
+    # params-gloas.yaml has 2 real pairs; one cl_proxy pair is pair 2 and every operator can sit on it.
+    labels_2 = LABELS_4[:2] + ["cl-proxy-0 -> cl-1-lodestar-geth (runtime produce rules)"]
+    r = topology.resolve([[2], [2], [2], [2]], 4, labels_2)
+    assert_eq(plan, "clp/all-operators-behind-the-proxy", r.pairs, [[2], [2], [2], [2]])
+
     plan.print("ALL POSITIVE CASES PASSED")

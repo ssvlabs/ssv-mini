@@ -34,6 +34,17 @@ CASES = {
         [{"upstream": 0, "strip": []}], LABELS_4),
     "bs_strip_not_string": lambda: topology.validate_blindspot_pairs(
         [{"upstream": 0, "strip": [123]}], LABELS_4),
+
+    "clp_not_a_list":       lambda: topology.validate_cl_proxy_pairs("nope", LABELS_4),
+    "clp_entry_not_dict":   lambda: topology.validate_cl_proxy_pairs(["nope"], LABELS_4),
+    "clp_unknown_key":      lambda: topology.validate_cl_proxy_pairs(
+        [{"upstream": 0, "rules": ["post-405"]}], LABELS_4),
+    "clp_upstream_not_int": lambda: topology.validate_cl_proxy_pairs([{"upstream": "0"}], LABELS_4),
+    "clp_upstream_out_of_range": lambda: topology.validate_cl_proxy_pairs([{"upstream": 4}], LABELS_4),
+    "clp_strip_not_list":   lambda: topology.validate_cl_proxy_pairs(
+        [{"upstream": 0, "strip": "GLOAS_FORK_EPOCH"}], LABELS_4),
+    "clp_strip_not_string": lambda: topology.validate_cl_proxy_pairs(
+        [{"upstream": 0, "strip": [1]}], LABELS_4),
 }
 
 def run(plan, args):

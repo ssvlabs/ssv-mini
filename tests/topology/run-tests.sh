@@ -66,7 +66,14 @@ set -- \
   bs_upstream_not_int "upstream must be an integer pair index" \
   bs_upstream_out_of_range "is not a real pair (valid 0-3)" \
   bs_strip_empty "must be a non-empty list of spec keys" \
-  bs_strip_not_string "must be a string spec key"
+  bs_strip_not_string "must be a string spec key" \
+  clp_not_a_list "cl_proxy_pairs must be a list of" \
+  clp_entry_not_dict "must be a dict shaped" \
+  clp_unknown_key "has unknown key rules" \
+  clp_upstream_not_int "upstream must be an integer pair index" \
+  clp_upstream_out_of_range "is not a real pair (valid 0-3)" \
+  clp_strip_not_list "strip must be a list of spec keys" \
+  clp_strip_not_string "must be a string spec key"
 
 while [ $# -gt 0 ]; do
   case="$1"

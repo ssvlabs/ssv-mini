@@ -185,13 +185,68 @@ def validate_blindspot_pairs(entries, real_pair_labels):
 
     return struct(entries = validated, labels = labels)
 
-def _start_blindspot_proxies(plan, all_participants, validated_entries):
-    """Start one spec-rewriting proxy per already-validated blindspot_pairs entry.
+def validate_cl_proxy_pairs(entries, real_pair_labels):
+    """Validate cl_proxy_pairs and compute each proxy's label - PURE, like validate_blindspot_pairs.
+
+    A cl_proxy pair is the general form of a blind-spot pair: the same cl-proxy image in front of
+    one real participant's CL, but with NO spec rewrite by default. Its produce rules (post-405,
+    drop-include-payload, version-header) are armed at runtime with `make cl-proxy-rule`, so a
+    version-skew test switches on and off while the SSV node keeps running on the same BN URL.
+
+    entries: raw args.get("cl_proxy_pairs", []) value. Each entry is
+        {upstream: <real pair index>, strip: [<spec key>]} with strip optional (default []).
+    Returns struct(entries = [struct(upstream=int, strip=[string], name=string)],
+        labels = [string]). Fails on invalid input.
+    """
+    if type(entries) != "list":
+        fail("cl_proxy_pairs must be a list of {{upstream: <pair index>}} dicts, got {}. ".format(
+            type(entries)) + "Example: cl_proxy_pairs: [{{upstream: 0}}]")
+
+    validated = []
+    labels = []
+    for i in range(len(entries)):
+        e = entries[i]
+        if type(e) != "dict":
+            fail("cl_proxy_pairs[{}] must be a dict shaped {{upstream: <pair index>}}, got {}.".format(
+                i, type(e)))
+        for k in e.keys():
+            if k not in ["upstream", "strip"]:
+                fail("cl_proxy_pairs[{}] has unknown key {}; known: upstream, strip. ".format(i, k) +
+                     "Produce rules are armed at runtime (make cl-proxy-rule), not in params.")
+
+        upstream_idx = e.get("upstream", None)
+        if type(upstream_idx) != "int":
+            fail("cl_proxy_pairs[{}].upstream must be an integer pair index, got {}.".format(
+                i, type(upstream_idx)))
+        if upstream_idx < 0 or upstream_idx >= len(real_pair_labels):
+            fail("cl_proxy_pairs[{}].upstream = {} is not a real pair (valid 0-{}). ".format(
+                i, upstream_idx, len(real_pair_labels) - 1) +
+                 "A proxy pair must front an actual participant, not another proxy.")
+
+        strip = e.get("strip", [])
+        if type(strip) != "list":
+            fail("cl_proxy_pairs[{}].strip must be a list of spec keys, got {}.".format(i, type(strip)))
+        for j in range(len(strip)):
+            if type(strip[j]) != "string":
+                fail("cl_proxy_pairs[{}].strip[{}] must be a string spec key, got {}.".format(
+                    i, j, type(strip[j])))
+
+        name = "cl-proxy-{}".format(i)
+        validated.append(struct(upstream = upstream_idx, strip = strip, name = name))
+        what = "runtime produce rules"
+        if len(strip) > 0:
+            what += ", strip " + ",".join(strip)
+        labels.append("{} -> {} ({})".format(name, real_pair_labels[upstream_idx], what))
+
+    return struct(entries = validated, labels = labels)
+
+def _start_proxies(plan, all_participants, validated_entries):
+    """Start one cl-proxy per already-validated blindspot_pairs / cl_proxy_pairs entry.
 
     Callers must run this ONLY after resolve() has validated operator_pairs against the
-    complete pair range (real participants + blind-spot labels). Starting these services
+    complete pair range (real participants + proxy labels). Starting these services
     before that validation is exactly the bug this split fixes: a topology that fails
-    validation must never leave orphaned blindspot-proxy-N services behind.
+    validation must never leave orphaned proxy services behind.
 
     Each returns a synthetic "pair" whose CL is the proxy and whose EL is the upstream
     pair's EL untouched - the proxy sits on the CL path only.
@@ -204,7 +259,7 @@ def _start_blindspot_proxies(plan, all_participants, validated_entries):
             description = "Starting {} in front of {}".format(
                 entry.name, up.cl_context.beacon_service_name),
             config = ServiceConfig(
-                image = "blindspot-proxy",
+                image = "cl-proxy",
                 env_vars = {
                     "UPSTREAM": "http://{}:{}".format(
                         up.cl_context.ip_addr, up.cl_context.http_port),
@@ -234,7 +289,7 @@ def _start_blindspot_proxies(plan, all_participants, validated_entries):
     return extra
 
 def _endpoints_for(all_participants, blindspots, idx):
-    """Resolve a pair index across real participants and appended blind-spot pairs."""
+    """Resolve a pair index across real participants and appended proxy pairs."""
     if idx < len(all_participants):
         p = all_participants[idx]
         return struct(
@@ -263,13 +318,19 @@ def build(plan, args, all_participants):
     blindspot_validated = validate_blindspot_pairs(
         args.get("blindspot_pairs", []), real_pair_labels)
     pair_labels += blindspot_validated.labels
+    # cl_proxy pairs come AFTER the blind-spot pairs: with R real pairs and B blind-spot pairs,
+    # cl-proxy-N is pair R + B + N.
+    cl_proxy_validated = validate_cl_proxy_pairs(
+        args.get("cl_proxy_pairs", []), real_pair_labels)
+    pair_labels += cl_proxy_validated.labels
 
     r = resolve(args.get("operator_pairs", None), operator_count, pair_labels)
 
     # Only after resolve() has validated the WHOLE topology do we actually start services -
-    # a topology that fails validation must never leave orphaned blindspot-proxy-N services
-    # behind (see this module's docstring: no service starts before validation completes).
-    blindspots = _start_blindspot_proxies(plan, all_participants, blindspot_validated.entries)
+    # a topology that fails validation must never leave orphaned proxy services behind
+    # (see this module's docstring: no service starts before validation completes).
+    blindspots = _start_proxies(
+        plan, all_participants, blindspot_validated.entries + cl_proxy_validated.entries)
 
     operators = []
     for op in range(operator_count):

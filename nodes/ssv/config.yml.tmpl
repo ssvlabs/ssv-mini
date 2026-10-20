@@ -30,3 +30,7 @@ OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
 EnableTraces: {{ .EnableTraces }}
 MetricsAPIPort: {{ .MetricsAPIPort }}
+{{- if .BuildersYAML }}
+# Gloas direct-builder overlay (params key ssv_builders; JSON is valid YAML flow style).
+Builders: {{ .BuildersYAML }}
+{{- end }}
