@@ -7,6 +7,7 @@ blocks = import_module("./blockchain/blocks.star")
 utils = import_module("./utils/utils.star")
 deployer = import_module("./contract/deployer.star")
 interactions = import_module("./contract/interactions.star")
+recorded = import_module("./contract/recorded.star")
 operator_keygen = import_module("./generators/operator-keygen.star")
 validator_keygen = import_module("./generators/validator-keygen.star")
 keysplit = import_module("./generators/keysplit.star")
@@ -18,6 +19,17 @@ def run(plan, args):
     ssv_node_count = args["nodes"]["ssv"]["count"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
     use_static_keys = args.get("use_static_keys", True)
+    # use_recorded_txs replays the pre-signed deployment/registration txs (static/recorded, scripts/record-txs.sh)
+    # instead of running hardhat + the ethers scripts live (~7 min on 12s blocks), and starts the SSV nodes as
+    # soon as those events are past the follow distance instead of at a fixed block 16. The recording matches the
+    # static keys and the full static keyshare set only.
+    use_recorded_txs = args.get("use_recorded_txs", False)
+    if use_recorded_txs and not use_static_keys:
+        fail("use_recorded_txs needs use_static_keys: true (the recorded registrations are for the static keys)")
+    if use_recorded_txs and args.get("pre_register_count", 0) > 0:
+        fail("use_recorded_txs records the full keyshare set; it can't pre-register a pre_register_count split")
+    if args.get("epoch_aligned_genesis", False) and not use_recorded_txs:
+        fail("epoch_aligned_genesis needs use_recorded_txs: true (it budgets for the recorded replay's timing)")
 
     ssv_image = utils.get_ssv_image(args)
     anchor_image = utils.get_anchor_image(args)
@@ -36,6 +48,8 @@ def run(plan, args):
     plan.print("Step 1/5: Launching Ethereum network (EL + CL + validators)")
     # The params file's network block, with the constants.env defaults (EL/CL images, genesis mnemonic) filled in.
     network_args = utils.apply_network_defaults(args["network"], use_static_keys)
+    if args.get("epoch_aligned_genesis", False):
+        network_args = recorded.align_genesis_to_epoch(network_args)
 
     # Guard the aetheria local_testnet seed layout: it adopts deposited-but-VC-idle validators at
     # indices [64, 64+SSV_MANAGED_VALIDATOR_COUNT) (ssvlabs/aetheria orchestrator/script/insert_test_data.sql). VCs run
@@ -98,8 +112,12 @@ def run(plan, args):
     blocks.wait_until_node_reached_block(plan, el_service_name, 1)
 
     # ── Step 2: Deploy SSV smart contracts ──
-    plan.print("Step 2/5: Deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
+    if use_recorded_txs:
+        plan.print("Step 2/5: Replaying the recorded SSV deployment + registrations")
+        recorded.replay(plan, el_rpc, with_validators=args.get("pre_register_validators", False))
+    else:
+        plan.print("Step 2/5: Deploying SSV smart contracts")
+        deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
 
     # ── Step 3: Prepare operator keys and keyshares ──
     number_of_keys = ssv_node_count + anchor_node_count
@@ -125,8 +143,9 @@ def run(plan, args):
                 description="Uploading static operator key {}".format(i),
             ))
 
-        interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
-        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
+        if not use_recorded_txs:
+            interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
+            plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
 
         keyshare_artifact = plan.upload_files(
             "./static/keyshares/out.json",
@@ -188,7 +207,12 @@ def run(plan, args):
     # [64+N, 64+SSV_MANAGED_VALIDATOR_COUNT) for the executor to register as its own cohort (D) — the index-partitioned split that
     # lets pre-registration and a registering suite share one enclave (aetheria#176). register_validators
     # reads pre_register_count from args.
-    if args.get("pre_register_validators", False):
+    if args.get("pre_register_validators", False) and use_recorded_txs:
+        # Registered by the replay in Step 2; publish the manifest recorded alongside it.
+        plan.print("Step 4/5: Validators pre-registered by the recorded txs (cohort P = indices [{}, {}))".format(
+            constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT))
+        plan.upload_files("./static/recorded/pre-registered.json", name="pre-registered.json")
+    elif args.get("pre_register_validators", False):
         effective_count = pre_register_count if pre_register_count > 0 else constants.SSV_MANAGED_VALIDATOR_COUNT
         plan.print("Step 4/5: Pre-registering {} validator(s) on-chain — cohort P = indices [{}, {}) (pre_register_validators=true, pre_register_count={})".format(
             effective_count, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + effective_count, pre_register_count))
@@ -224,7 +248,8 @@ def run(plan, args):
     ssv_node_api_url = None
 
     if ssv_node_count > 0:
-        blocks.wait_until_node_reached_block(plan, el_service_name, 16)
+        if not use_recorded_txs:  # the replay already waited out the follow distance
+            blocks.wait_until_node_reached_block(plan, el_service_name, 16)
 
         ssv_configs = {}
         for _ in range(0, ssv_node_count):
