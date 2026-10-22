@@ -106,6 +106,17 @@ make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDAT
 - Static keys assume 4 operators and `SSV_MANAGED_VALIDATOR_COUNT` validators at indices [64, 64+that); scale with `SSV_VALIDATOR_COUNT=N ./scripts/generate-static-keys.sh` (regenerate the aetheria seed to the same N)
 - Changing operator/validator counts requires `use_static_keys: false` or `make generate-keys`
 
+## Hive Simulator (experimental)
+
+`hive/` runs the same devnet as a [hive](https://github.com/ethereum/hive) simulator: SSV nodes up ~15s after
+start (vs ~3 min with `params-fast.yaml`), pass/fail per test. Use it for repeatable e2e checks and scenarios
+(faults, restarts, mixed versions); use Kurtosis for a devnet you inspect by hand with scout, dora or e2m.
+How it works, writing tests and the comparison: `hive/README.md`.
+
+```bash
+SSV_IMAGE=node/ssv:my-branch hive/run.sh   # needs Go + Docker
+```
+
 ## Health Checks
 
 ```bash
