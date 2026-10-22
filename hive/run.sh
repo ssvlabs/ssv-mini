@@ -39,6 +39,7 @@ done
 SIM="$HIVE_DIR/simulators/ssv"
 rsync -a --delete "$ROOT/hive/simulators/ssv/" "$SIM/"
 cp "$ROOT/nodes/ssv/config.yml.tmpl" "$SIM/fixtures/ssv-config.yml.tmpl"
+"$ROOT/scripts/record-txs.sh" --if-stale
 cp "$ROOT/static/recorded/txs.json" "$SIM/fixtures/txs.json"
 rsync -a "$ROOT/static/keys/" "$SIM/fixtures/keys/"
 

@@ -87,6 +87,7 @@ run: check-deps ensure-keys
 		PARAMS="$(GENERATED_PARAMS)"; \
 		echo "──── Params overrides applied ($$PARAMS): GLOAS_FORK_EPOCH=$(GLOAS_FORK_EPOCH) BOOLE_FORK_EPOCH=$(BOOLE_FORK_EPOCH) PRE_REGISTER_VALIDATORS=$(PRE_REGISTER_VALIDATORS) PRE_REGISTER_COUNT=$(PRE_REGISTER_COUNT) SSV_COUNT=$(SSV_COUNT) ANCHOR_COUNT=$(ANCHOR_COUNT) ────"; \
 	fi; \
+	if grep -qE '^use_recorded_txs:[[:space:]]*true' "$$PARAMS"; then ./scripts/record-txs.sh --if-stale || exit 1; fi; \
 	echo "──── Starting SSV testnet ────"; \
 	kurtosis run --enclave $(ENCLAVE_NAME) --args-file "$$PARAMS" .
 

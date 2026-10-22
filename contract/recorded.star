@@ -64,7 +64,8 @@ print("replayed %d recorded txs (%s), mined by block %d; EL now at block %d" % (
 # follow distance, so the nodes can start right after (replacing the fixed "wait for block 16").
 #
 # The recording is only valid for what it was made from: the static keys and keyshares, the deployer key, the
-# chain id and the ssv-network version of the deployer image. Re-record after changing any of them.
+# chain id and the ssv-network version of the deployer image. `make run` re-records when any of them changes
+# (scripts/record-txs.sh --if-stale fingerprints them).
 def replay(plan, el_rpc, with_validators):
     stages = ["deploy", "operators"]
     if with_validators:

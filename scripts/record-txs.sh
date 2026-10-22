@@ -10,36 +10,66 @@
 #
 # Each tx is tagged with its stage (deploy, operators, validators) so a replay can stop after the operators.
 #
-# Re-run whenever the deployer image (ssv-network version), the static keys or the keyshares change.
+# The recording isn't committed: `make run` (with use_recorded_txs), hive/run.sh and bench-kurtosis.sh call this
+# with --if-stale, which records only when an input changed (the deployer Dockerfile, the registration scripts,
+# the static keys/keyshares, the pinned addresses, this script). Needs docker and jq; anvil runs in a container.
 #
-# Usage: scripts/record-txs.sh [deployer-image]
+# Usage: scripts/record-txs.sh [--if-stale]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/constants.env"
-DEPLOYER_IMAGE="${1:-$DEPLOYER_IMAGE}"
 OUT="$ROOT/static/recorded"
-PORT=18545
 CHAIN_ID=3151908
 DEPLOYER_KEY=0x39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d
 DEPLOYER_ADDR=0xE25583099BA105D9ec0A67f5Ae86D90e50036425
-RPC="http://127.0.0.1:$PORT"
+RPC=http://127.0.0.1:8545 # anvil, as seen from inside its own container (every cast call runs there)
 
-command -v anvil >/dev/null || { echo "anvil not found (foundryup)"; exit 1; }
+# fingerprint hashes everything that determines the recorded txs.
+fingerprint() {
+  (
+    cd "$ROOT"
+    printf '%s\n' "$DEPLOYER_IMAGE" "$FOUNDRY_IMAGE" "$SSV_NETWORK_PROXY_CONTRACT" "$SSV_TOKEN_CONTRACT" "$CHAIN_ID"
+    find contract/Dockerfile.contract contract/registration scripts/record-txs.sh \
+      static/keys static/keyshares/out.json -type f | LC_ALL=C sort | xargs shasum -a 256
+  ) | shasum -a 256 | cut -d' ' -f1
+}
+
+WANT=$(fingerprint)
+if [ "${1:-}" = "--if-stale" ] && [ -f "$OUT/txs.json" ] && [ "$(cat "$OUT/fingerprint" 2>/dev/null)" = "$WANT" ]; then
+  echo "Recorded txs up to date ($OUT/txs.json)"
+  exit 0
+fi
+command -v jq >/dev/null || { echo "jq not found"; exit 1; }
+echo "Recording the SSV deployment + registrations against anvil (~1-2 min)..."
 mkdir -p "$OUT"
+
+# The same image the Kurtosis deployer service builds (contract/Dockerfile.contract, cached after the first build).
+docker build -q -t "$DEPLOYER_IMAGE" -f "$ROOT/contract/Dockerfile.contract" "$ROOT/contract" >/dev/null
+
+NET="ssv-mini-record-$$"
+ANVIL="ssv-mini-record-anvil-$$"
+PIN_PID=
+cleanup() {
+  [ -n "$PIN_PID" ] && kill "$PIN_PID" 2>/dev/null || true
+  docker rm -f "$ANVIL" >/dev/null 2>&1 || true
+  docker network rm "$NET" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+docker network create "$NET" >/dev/null
 
 # The scripts price their txs off anvil's fee market, and a replay target starts at a ~1 gwei base fee
 # (ethereum-package genesis). With 1s empty blocks anvil's base fee would decay towards zero while the scripts
 # run, so it is pinned at 50 gwei, and a recording below MIN_FEE_CAP is rejected. Overpaying is free: the
 # deployer has 1e9 ETH. (Mining on demand instead races ethers' 250ms nonce cache: "nonce has already been used".)
 MIN_FEE_CAP=2000000000
-anvil --chain-id "$CHAIN_ID" --port "$PORT" --host 0.0.0.0 --block-time 1 --gas-limit 60000000 \
-  --block-base-fee-per-gas 50000000000 --hardfork prague --silent &
-ANVIL_PID=$!
+docker run -d --name "$ANVIL" --network "$NET" --entrypoint anvil "$FOUNDRY_IMAGE" \
+  --chain-id "$CHAIN_ID" --host 0.0.0.0 --port 8545 --block-time 1 --gas-limit 60000000 \
+  --block-base-fee-per-gas 50000000000 --hardfork prague --silent >/dev/null
+cast() { docker exec "$ANVIL" cast "$@"; }
 for _ in $(seq 50); do cast block-number --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.2; done
 while true; do cast rpc --rpc-url "$RPC" anvil_setNextBlockBaseFeePerGas 0xba43b7400 >/dev/null 2>&1 || true; sleep 0.3; done &
 PIN_PID=$!
-trap 'kill $ANVIL_PID $PIN_PID 2>/dev/null || true' EXIT
 
 cast rpc --rpc-url "$RPC" anvil_setBalance "$DEPLOYER_ADDR" 0x33b2e3c9fd0803ce8000000 >/dev/null
 
@@ -47,8 +77,8 @@ keys_json=$(for i in 0 1 2 3; do jq -Rs . < "$ROOT/static/keys/operator-$i/publi
 
 # deployer runs one stage's script in the deployer image against anvil.
 deployer() {
-  docker run --rm \
-    -e LOCAL_RPC_URL="http://host.docker.internal:$PORT" \
+  docker run --rm --network "$NET" \
+    -e LOCAL_RPC_URL="http://$ANVIL:8545" \
     -e LOCAL_DEPLOYER_KEY="$DEPLOYER_KEY" \
     -e SSV_NETWORK_ADDRESS="$SSV_NETWORK_PROXY_CONTRACT" \
     -e KEYSHARES_FILE=/app/keyshares/out.json \
@@ -73,7 +103,7 @@ proxy=$(jq -r .ssvNetworkProxy "$OUT/deploy-result.json")
 [ "$proxy" = "$SSV_NETWORK_PROXY_CONTRACT" ] || { echo "proxy drift: $proxy != $SSV_NETWORK_PROXY_CONTRACT"; exit 1; }
 
 END_BLOCK=$(cast block-number --rpc-url "$RPC")
-: > "$OUT/txs.jsonl.tmp"
+: >| "$OUT/txs.jsonl.tmp"
 for b in $(seq 0 "$END_BLOCK"); do
   for h in $(cast block "$b" --rpc-url "$RPC" --json | jq -r '.transactions[]'); do
     raw=$(cast rpc --rpc-url "$RPC" eth_getRawTransactionByHash "$h" | jq -r .)
@@ -88,6 +118,7 @@ for b in $(seq 0 "$END_BLOCK"); do
   done
 done
 jq -s --argjson chainId "$CHAIN_ID" --arg deployer "$DEPLOYER_ADDR" --arg image "$DEPLOYER_IMAGE" \
-  '{chainId: $chainId, deployer: $deployer, deployerImage: $image, txs: (sort_by(.nonce))}' "$OUT/txs.jsonl.tmp" > "$OUT/txs.json"
+  '{chainId: $chainId, deployer: $deployer, deployerImage: $image, txs: (sort_by(.nonce))}' "$OUT/txs.jsonl.tmp" >| "$OUT/txs.json"
 rm "$OUT/txs.jsonl.tmp"
+echo "$WANT" >| "$OUT/fingerprint"
 echo "Recorded $(jq -r '[.txs[].stage] | group_by(.) | map("\(.[0])=\(length)") | join(" ")' "$OUT/txs.json") txs -> $OUT/txs.json"
