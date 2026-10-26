@@ -83,14 +83,13 @@ network:
     # merkleization root and rejected every §4 submit with 500 BLOCK_ERROR_INVALID_SIGNATURE (ssvlabs/ssv#3021);
     # a devnet-8 CL matches the node's root. (devnet-8 lodestar retains §6 produce+publish and §5 proposer_preferences.)
     cl_image: ethpandaops/lodestar@sha256:c5d9cfb9d93c182edc6883f58de847af18a70293ce7573259236da695ea248d1
-    # VC cohort = validator_count*count = the always-on majority the chain self-justifies on while the SSV
-    # pool (indices [SSV_SEED_START_INDEX, +count)) is > 1/3 of the set — must equal
-    # constants.SSV_SEED_START_INDEX, the SSV seed start. Without a VC majority the chain can't justify
-    # before SSV adopts, and SSV's slashing protection (adoption-epoch highest-source vs the stuck source=0)
-    # then refuses every attestation as a surround vote — a permanent genesis-bootstrap deadlock
-    # (aetheria#176). This value is set per test suite by aetheria's provision-pool.sh (VC/count): the
-    # small default below (32*2 = 64 VC) for every suite, scaled up for glamsterdam-fork's large pool
-    # (e.g. 3600*2 = 7200 VC for a 3000-validator pool, ~29% SSV).
+    # VC cohort = validator_count*count, which must equal the SSV seed start (SSV_SEED_START_INDEX of
+    # utils/constants.star). Before SSV adopts the seed, the chain justifies on this always-on cohort alone,
+    # so it needs 2/3 of the set: the SSV pool must stay < 1/3. Short of that, the chain can't justify, and
+    # SSV's slashing protection (adoption-epoch highest source vs the stuck source=0) then refuses every
+    # attestation as a surround vote — a permanent genesis-bootstrap deadlock (aetheria#176). aetheria's
+    # provision-pool.sh sets these per suite: the default below (32*2 = 64 VCs, ~13.5% SSV) for most,
+    # scaled up for glamsterdam-fork's large pool (e.g. 3600*2 = 7200 VCs for 3000 SSV validators, ~29%).
     validator_count: 32
     count: 2
     supernode: true
@@ -125,11 +124,11 @@ network:
 
 use_static_keys: true
 
-# pre_register_validators for the gloas net. See params.yaml for the flag's full semantics and its
-# incompatibility with the executor's validator-registering suites. Enabled here, the deployer
-# bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
-# from genesis — which the aetheria (transition) suite's per-validator fork-transition checks need
-# (aetheria#141 A2).
+# pre_register_validators for the gloas net (see params.yaml for the flag's semantics and its
+# incompatibility with the executor's validator-registering suites). Off by default. Turned on (e.g.
+# PRE_REGISTER_VALIDATORS=true), Step 4 registers the static keyshare set at bring-up so the fleet
+# runs SSV-managed validators from genesis, which the aetheria (transition) suite's per-validator
+# fork-transition checks need (aetheria#141 A2).
 pre_register_validators: false
 
 # pre_register_count partitions the static keyshare pool when pre_register_validators is true: register
@@ -139,18 +138,16 @@ pre_register_validators: false
 # 0 (default) registers the FULL set. See params.yaml for the full semantics and the #36 prefix constraint.
 pre_register_count: 0
 
-# unsafe_skip_validator_layout_guard bypasses main.star's 64/74 validator-layout guard so a STANDALONE
-# base-chain liveness probe can run more than 64 baseline validators (ssvlabs/ssv-mini#38: does the
-# Gloas/ePBS devnet stall ~1.4 epochs past the fork because a 74-validator set gives degenerate
-# attestation-committee / PTC coverage?). To use it: set this true, raise the participants'
-# validator_count (and/or count) AND preregistered_validator_count together to the new VC total (e.g.
-# validator_count: 64 x count: 2 = 128 VCs, preregistered_validator_count: 128), and set
-# monitor.enabled: false (the monitor needs SSV validators and FATAL-crashes on a head-stall), then run.
-# SAFE ONLY on a bare run with pre_register_validators: false AND no aetheria executor - the SSV nodes
-# then adopt zero beacon validators (Step 4 skipped), so the larger VC set never overlaps the SSV seed.
-# Combining with pre_register_validators: true is rejected by main.star (that half is detectable in-repo).
-# The aetheria half can't be, so do NOT set this against an executor validator-registering suite
-# ((event)/(ptc)/(proposer)/(p2p)) either, or the extra VCs overlap the SSV seed [64, 64+N) -> double-sign -> slashing.
+# unsafe_skip_validator_layout_guard bypasses main.star's validator-layout guard so a STANDALONE
+# base-chain liveness probe can run VCs past the SSV seed start (ssvlabs/ssv-mini#38: does the Gloas
+# devnet stall ~1.4 epochs past the fork because the default 74-validator set gives degenerate
+# attestation-committee / PTC coverage?). To use it, set this true, raise validator_count (and/or count)
+# and preregistered_validator_count together to the new VC total (e.g. 64 x 2 = 128 VCs,
+# preregistered_validator_count: 128), and set monitor.enabled: false (the monitor FATAL-crashes on a
+# head-stall). SAFE ONLY on a bare run that adopts no SSV validators: pre_register_validators: false
+# (main.star rejects true) and no aetheria executor validator-registering suite
+# ((event)/(ptc)/(proposer)/(p2p); undetectable in-repo). Otherwise the extra VCs overlap the seed ->
+# double-sign -> slashing.
 unsafe_skip_validator_layout_guard: false
 
 monitor:

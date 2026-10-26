@@ -65,12 +65,11 @@ DEFAULT_CL_IMAGES = {"lighthouse": _require("LIGHTHOUSE_IMAGE")}
 
 ETH2_VAL_TOOLS_IMAGE = _require("ETH2_VAL_TOOLS_IMAGE")
 
-# The aetheria local_testnet seed: indices [SSV_SEED_START_INDEX, SSV_SEED_START_INDEX +
-# SSV_MANAGED_VALIDATOR_COUNT) are deposited-but-VC-idle validators the SSV operators adopt. These MIRROR
-# static/keyshares/out.json and the external aetheria seed (ssvlabs/aetheria .../insert_test_data.sql).
-# scripts/generate-static-keys.sh (Step 4) sets both, from CL_VALIDATOR_START / SSV_VALIDATOR_COUNT, when it
-# (re)generates the keyshares — to scale the pool, run that script with SSV_VALIDATOR_COUNT=N and
-# regenerate the aetheria seed to the same N. main.star's validator-layout guard reads these.
+# The aetheria local_testnet seed: indices [SSV_SEED_START_INDEX, +SSV_MANAGED_VALIDATOR_COUNT) are the
+# deposited-but-VC-idle validators the SSV operators adopt. Both MIRROR static/keyshares/out.json and the
+# external aetheria seed (ssvlabs/aetheria .../insert_test_data.sql): scripts/generate-static-keys.sh sets
+# them when it regenerates the keyshares (its header covers scaling the pool), and the aetheria seed must
+# be regenerated to match. main.star reads them for its layout guard, pool-size checks and Step 4.
 SSV_SEED_START_INDEX = 64         # first deposited-but-VC-idle validator index; VCs must stay in [0, this)
 SSV_MANAGED_VALIDATOR_COUNT = 10  # SSV-adopted validators, indices [SSV_SEED_START_INDEX, +this)
 
