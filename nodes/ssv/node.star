@@ -18,11 +18,7 @@ def generate_config(
         args,
 ):
     boole_epoch = args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH)
-    discovery = ""
-    if enr == "":
-        discovery = "mdns"
-    else:
-        discovery = "discv5"
+    discovery = "mdns" if enr == "" else "discv5"
 
     # Prepare data for the template
     data = struct(
@@ -92,10 +88,16 @@ def get_service_config(index, config_artifact, image):
         },
         env_vars={
             "CONFIG_PATH": config_path,
+            # Advertise the container's IP. Left unset, the image's start-node target fills HOST_ADDRESS with the
+            # host's public IP (an OpenDNS lookup), which no node in the enclave can dial, so under discv5 (a mixed
+            # SSV + Anchor committee) the SSV nodes never connect to each other and all their traffic relays
+            # through Anchor.
+            "HOST_ADDRESS": constants.PRIVATE_IP_PLACEHOLDER,
             "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
         },
         files={
             SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },
+        private_ip_address_placeholder=constants.PRIVATE_IP_PLACEHOLDER,
     )
