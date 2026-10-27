@@ -1,25 +1,25 @@
 # Gloas / ePBS (EIP-7732) fork-transition test: genesis on Fulu, forks into Gloas at epoch 2.
-# Usage: make prepare && make run-gloas
+# Usage: make prepare && make prepare-monitor && make run-gloas
 #        (or: make run PARAMS_FILE=params-gloas.yaml)
 # SSV_COMMIT defaults to stage, which carries ePBS since ssvlabs/ssv#2901.
 #
-# Clients: the Sepolia Glamsterdam releases, Lighthouse v8.3.0-rc.0 + Geth v1.17.7 (Gloas/Amsterdam activate
+# Clients: the Sepolia Glamsterdam releases, Lighthouse v8.3.0-rc.0 + Geth v1.17.7 (Gloas/Amsterdam activated
 # on Sepolia on 2026-10-06), pinned below as a validated pair rather than taken from constants.env's defaults
 # (whose Lighthouse v8.2.2 lacks §6, see below). Validated 2026-10-05 on a max-scale aetheria
 # (glamsterdam-fork) run (3000 SSV validators, SSV stage nodes + the ssvlabs/ssv#3045 exporter): every graded
 # §4 block landed with a full §6 payload, PTC votes and §2 attestations settled correct on-chain, the CL head
 # advanced through the fork, and dora indexed the Gloas blocks without a decode error.
-# §6: Lighthouse v8.3 serves the envelope-produce endpoint. v8.2 returned 404 there, which is why this net
-# ran a Lodestar glamsterdam-devnet-8 build (with the CL-agnostic EL lookup, ssvlabs/aetheria#136) until
-# 2026-10-05.
+# §6: Lighthouse v8.3 serves the envelope-produce endpoint; v8.2 returns 404 there.
 # Builder registrations: no builder is configured, so Lighthouse rejects every non-empty register_validator
 # batch with 500 BuilderMissing and the SSV nodes log "failed to submit validator registrations" on pre-fork
 # slots. Harmless for these tests: registrations stop at the fork, and nothing here needs a builder.
+# Fork-slot PTC: v8.3.0-rc.0 can't serve the fork epoch's PTC duties before the fork block lands, so the fork
+# slot's PTC goes unvoted network-wide (SSV nodes and Lighthouse's own VCs alike); later slots are clean.
+# Expected on this pin: v8.3.0 fixes it (sigp/lighthouse#10193); ssvlabs/ssv#3087 tracks an SSV-side retry.
 # Genesis generator: it must deploy the EIP-8282 builder deposit/exit contracts where Geth expects them
 # (deposit 0x0000bff46984e3725691fa540a8c7589300d8282). Without them Geth builds no payload after the fork
-# ("empty system contract"), so every post-fork block is payload-less and no transaction lands. The
-# ethereum-package@6.1.0 default (5.3.5) predates Gloas and 6.0.8 these addresses; 6.2.3 is
-# ethereum-package main's default.
+# ("empty system contract"), so every post-fork block is payload-less and no transaction lands. 6.2.3
+# deploys them; the ethereum-package@6.1.0 default (5.3.5) predates Gloas, and 6.0.8 predates the addresses.
 #
 # Every image here is pinned to a fixed build (geth + CL by digest, dora + generator by fixed tag), so the net
 # is reproducible. To bump a client: read the new tag's digest
@@ -46,7 +46,7 @@ network:
     cl_image: sigp/lighthouse@sha256:3e5f0609c74b824d3cb1049920169114d99fd7bc9082b996b3adae3d4e9ef8dc
     # Lighthouse holds 16 events per SSE topic by default and drops the oldest for a subscriber that falls
     # behind. A slot's PTC votes (up to 512) arrive in bursts, so the monitor lost some and read them as
-    # misses (sigp/lighthouse#10214, ssvlabs/ethereum2-monitor#593). 32x holds a full slot of votes.
+    # misses (sigp/lighthouse#10214, ssvlabs/ethereum2-monitor#593). 32x holds 512 events, a full slot of votes.
     cl_extra_params:
       - "--http-sse-capacity-multiplier=32"
     # VC cohort = validator_count*count, which must equal the SSV seed start (SSV_SEED_START_INDEX of
@@ -119,8 +119,8 @@ unsafe_skip_validator_layout_guard: false
 monitor:
   enabled: true    # Gloas-aware (see the header)
 
-# Dormant Boole: utils/constants.star's BOOLE_DORMANT_EPOCH (the default when unset), which says why not
-# the MaxUint64 sentinel. Spelled out so BOOLE_FORK_EPOCH has a key to substitute.
+# Dormant Boole: BOOLE_DORMANT_EPOCH, the default anyway (utils/constants.star explains why not MaxUint64),
+# spelled out so BOOLE_FORK_EPOCH has a key to substitute.
 boole_epoch: 1000000000
 
 nodes:

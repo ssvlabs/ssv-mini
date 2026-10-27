@@ -132,6 +132,16 @@ restart-ssv-nodes:
 # a plain `docker build` leaves the result in the build cache only, so the run silently reuses the
 # previous image. --load is a no-op on the default docker driver.
 
+# The legacy builder (no buildx plugin, or DOCKER_BUILDKIT=0) rejects --load as an unknown flag. Probe
+# `docker build` itself: `docker buildx version` still passes under DOCKER_BUILDKIT=0.
+.PHONY: check-buildx
+check-buildx:
+	@docker build --help | grep -q -- '--load' || { \
+		echo "Error: docker build doesn't accept --load, which the image builds pass."; \
+		echo "  Install the buildx plugin (https://docs.docker.com/go/buildx/) and unset DOCKER_BUILDKIT=0 if set."; \
+		exit 1; \
+	}
+
 .PHONY: prepare
 prepare: prepare-ssv
 
@@ -139,7 +149,7 @@ prepare: prepare-ssv
 # For a branch we detach at origin/<branch>; a plain `git checkout <branch>` lands on a local
 # branch that `git fetch` does not fast-forward — that is how a stale (v2.3.1) node got rebuilt.
 .PHONY: prepare-ssv
-prepare-ssv:
+prepare-ssv: check-buildx
 	@if [ ! -d "../ssv" ]; then \
 		echo "Cloning SSV repo ($(SSV_COMMIT))..." && \
 		git clone https://github.com/ssvlabs/ssv.git ../ssv; \
@@ -153,7 +163,7 @@ prepare-ssv:
 # prepare-anchor builds node/anchor at the FRESHEST commit for ANCHOR_COMMIT
 # (branch, tag, or commit). Same detach-at-origin pattern as prepare-ssv.
 .PHONY: prepare-anchor
-prepare-anchor:
+prepare-anchor: check-buildx
 	@if [ ! -d "../anchor" ]; then \
 		echo "Cloning Anchor repo ($(ANCHOR_COMMIT))..." && \
 		git clone https://github.com/sigp/anchor.git ../anchor; \
@@ -165,7 +175,7 @@ prepare-anchor:
 	@cd ../anchor && docker build --load -f Dockerfile.devnet -t node/anchor .
 
 .PHONY: prepare-monitor
-prepare-monitor:
+prepare-monitor: check-buildx
 	@if [ ! -d "../ethereum2-monitor" ]; then \
 		echo "Cloning Monitor repo..." && \
 		git clone https://github.com/ssvlabs/ethereum2-monitor.git ../ethereum2-monitor; \

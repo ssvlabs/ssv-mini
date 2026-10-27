@@ -4,7 +4,7 @@ Local SSV testnet in ~4 minutes. Kurtosis-based devnet for developing and testin
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) (or [OrbStack](https://orbstack.dev/) on macOS)
+- [Docker](https://docs.docker.com/get-docker/) (or [OrbStack](https://orbstack.dev/) on macOS) with the buildx plugin for the image builds (bundled with Docker Desktop and OrbStack; on Linux, the `docker-buildx-plugin` package)
 - [Kurtosis CLI](https://docs.kurtosis.com/install) (`brew install kurtosis-tech/tap/kurtosis-cli`)
 
 **Recommended:** 8+ CPU cores, 16GB+ RAM allocated to Docker.
@@ -107,7 +107,7 @@ use_static_keys: true   # false = regenerate keys at runtime (~40s slower)
 Pre-built configs:
 - `params.yaml` — Fulu at genesis (default)
 - `params-boole.yaml` — Alan→Boole fork transitions; needs `SSV_COMMIT=integration/boole-convergence make prepare`
-- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition; needs `SSV_COMMIT=epbs-gloas make prepare` and ethpandaops glamsterdam-devnet-8 client images (digest-pinned; monitor/E2M enabled - prepare it beforehand)
+- `params-gloas.yaml` — Fulu→Gloas (ePBS/EIP-7732) transition on the digest-pinned Sepolia Glamsterdam release clients; needs `make prepare` (SSV `stage` carries ePBS) and `make prepare-monitor` (E2M is enabled)
 
 ```bash
 make run PARAMS_FILE=params-boole.yaml
