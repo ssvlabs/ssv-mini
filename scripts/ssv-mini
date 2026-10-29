@@ -119,7 +119,7 @@ build_ssv_image() {
         exit 1
     fi
     echo "Building SSV image from: $SSV_REPO"
-    docker build -t "$SSV_IMAGE" "$SSV_REPO"
+    docker build --load -t "$SSV_IMAGE" "$SSV_REPO"
 }
 
 cmd_start() {
