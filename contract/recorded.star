@@ -73,7 +73,9 @@ def replay(plan, el_rpc, with_validators):
     plan.run_python(
         run=REPLAY_SCRIPT,
         args=[el_rpc, ",".join(stages), str(FOLLOW_DISTANCE + 1)],
-        files={"/recorded": plan.upload_files("../static/recorded/txs.json", name="recorded-txs")},
+        files={"/recorded": plan.upload_files(
+            "../static/recorded/txs.json", name="recorded-txs", description="Uploading the recorded SSV txs",
+        )},
         wait="5m",
         description="Replaying recorded SSV txs ({}) and waiting out the follow distance".format(", ".join(stages)),
     )

@@ -204,7 +204,10 @@ def run(plan, args):
         # Registered by the replay in Step 2; publish the manifest recorded alongside it.
         plan.print("Step 4/5: Validators pre-registered by the recorded txs (cohort P = indices [{}, {}))".format(
             constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT))
-        plan.upload_files("./static/recorded/pre-registered.json", name="pre-registered.json")
+        plan.upload_files(
+            "./static/recorded/pre-registered.json", name="pre-registered.json",
+            description="Publishing the recorded pre-registration manifest",
+        )
     elif args.get("pre_register_validators", False):
         effective_count = pre_register_count if pre_register_count > 0 else constants.SSV_MANAGED_VALIDATOR_COUNT
         plan.print("Step 4/5: Pre-registering {} validator(s) on-chain — cohort P = indices [{}, {}) (pre_register_validators=true, pre_register_count={})".format(
