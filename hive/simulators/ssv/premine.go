@@ -25,11 +25,11 @@ import (
 // (eventsyncer's defaultStalenessThreshold).
 //
 // It writes chain.rlp and the head block into net.dir and returns the head block's timestamp.
-func premine(ctx context.Context, t *hivesim.T, clientType string, net *devnet) (headBlockFile string, headTime time.Time, err error) {
+func premine(ctx context.Context, t *hivesim.T, clientType string, net *devnet, rec *recording) (headBlockFile string, headTime time.Time, err error) {
 	dev := t.StartClient(clientType, hivesim.WithStaticFiles(map[string]string{"/genesis.json": net.elGenesis}))
 	defer t.Sim.StopClient(t.SuiteID, t.TestID, dev.Container)
 
-	hashes, err := replayTxs(ctx, dev.RPC())
+	hashes, err := replayTxs(ctx, dev.RPC(), rec)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("replay txs: %w", err)
 	}

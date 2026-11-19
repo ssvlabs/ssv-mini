@@ -1,7 +1,7 @@
 # ssv simulator: the Go test driver plus the genesis tooling it runs in-process.
 ARG GENESIS_GENERATOR=ethpandaops/ethereum-genesis-generator:6.2.4
 
-FROM golang:1.24 AS builder
+FROM golang:1.24.13 AS builder
 WORKDIR /source
 COPY go.mod go.sum ./
 RUN go mod download
@@ -14,7 +14,11 @@ ARG SSV_SLOT_SECONDS=12
 ARG SSV_GENESIS_DELAY=15
 ARG SSV_TIMEOUT=900
 ARG SSV_CHAIN=premined
-ENV SSV_SLOT_SECONDS=${SSV_SLOT_SECONDS} SSV_GENESIS_DELAY=${SSV_GENESIS_DELAY} SSV_TIMEOUT=${SSV_TIMEOUT} SSV_CHAIN=${SSV_CHAIN}
+# Validator layout, from utils/constants.star via hive/run.sh: VCs run [0, VC), the SSV pool is [VC, VC+POOL).
+ARG SSV_VC_VALIDATORS=64
+ARG SSV_POOL_VALIDATORS=10
+ENV SSV_SLOT_SECONDS=${SSV_SLOT_SECONDS} SSV_GENESIS_DELAY=${SSV_GENESIS_DELAY} SSV_TIMEOUT=${SSV_TIMEOUT} SSV_CHAIN=${SSV_CHAIN} \
+    SSV_VC_VALIDATORS=${SSV_VC_VALIDATORS} SSV_POOL_VALIDATORS=${SSV_POOL_VALIDATORS}
 COPY fixtures /fixtures
 COPY --from=builder /ssv-sim /ssv-sim
 ENTRYPOINT ["/ssv-sim"]

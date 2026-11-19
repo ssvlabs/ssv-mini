@@ -27,27 +27,29 @@ var (
 
 // gethParams configures hive's go-ethereum client for the devnet's chain config (everything through
 // Osaka/BPO2 at genesis, matching ethereum-package's Fulu-at-genesis network).
-var gethParams = hivesim.Params{
-	"HIVE_CHAIN_ID":                  fmt.Sprint(chainID),
-	"HIVE_NETWORK_ID":                fmt.Sprint(chainID),
-	"HIVE_FORK_HOMESTEAD":            "0",
-	"HIVE_FORK_TANGERINE":            "0",
-	"HIVE_FORK_SPURIOUS":             "0",
-	"HIVE_FORK_BYZANTIUM":            "0",
-	"HIVE_FORK_CONSTANTINOPLE":       "0",
-	"HIVE_FORK_PETERSBURG":           "0",
-	"HIVE_FORK_ISTANBUL":             "0",
-	"HIVE_FORK_BERLIN":               "0",
-	"HIVE_FORK_LONDON":               "0",
-	"HIVE_MERGE_BLOCK_ID":            "0",
-	"HIVE_TERMINAL_TOTAL_DIFFICULTY": "0",
-	"HIVE_SHANGHAI_TIMESTAMP":        "0",
-	"HIVE_CANCUN_TIMESTAMP":          "0",
-	"HIVE_PRAGUE_TIMESTAMP":          "0",
-	"HIVE_OSAKA_TIMESTAMP":           "0",
-	"HIVE_BPO1_TIMESTAMP":            "0",
-	"HIVE_BPO2_TIMESTAMP":            "0",
-	"HIVE_LOGLEVEL":                  "3",
+func gethParams(chainID int) hivesim.Params {
+	return hivesim.Params{
+		"HIVE_CHAIN_ID":                  fmt.Sprint(chainID),
+		"HIVE_NETWORK_ID":                fmt.Sprint(chainID),
+		"HIVE_FORK_HOMESTEAD":            "0",
+		"HIVE_FORK_TANGERINE":            "0",
+		"HIVE_FORK_SPURIOUS":             "0",
+		"HIVE_FORK_BYZANTIUM":            "0",
+		"HIVE_FORK_CONSTANTINOPLE":       "0",
+		"HIVE_FORK_PETERSBURG":           "0",
+		"HIVE_FORK_ISTANBUL":             "0",
+		"HIVE_FORK_BERLIN":               "0",
+		"HIVE_FORK_LONDON":               "0",
+		"HIVE_MERGE_BLOCK_ID":            "0",
+		"HIVE_TERMINAL_TOTAL_DIFFICULTY": "0",
+		"HIVE_SHANGHAI_TIMESTAMP":        "0",
+		"HIVE_CANCUN_TIMESTAMP":          "0",
+		"HIVE_PRAGUE_TIMESTAMP":          "0",
+		"HIVE_OSAKA_TIMESTAMP":           "0",
+		"HIVE_BPO1_TIMESTAMP":            "0",
+		"HIVE_BPO2_TIMESTAMP":            "0",
+		"HIVE_LOGLEVEL":                  "3",
+	}
 }
 
 func runClusterAttests(t *hivesim.T) {
@@ -59,6 +61,14 @@ func runClusterAttests(t *hivesim.T) {
 	}
 
 	types := clientTypes(t)
+	chainID, err := fixtureChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := loadRecording(chainID)
+	if err != nil {
+		t.Fatalf("recorded txs: %v", err)
+	}
 
 	dir, err := os.MkdirTemp("", "ssv-devnet")
 	if err != nil {
@@ -72,7 +82,7 @@ func runClusterAttests(t *hivesim.T) {
 			t.Fatalf("render EL genesis: %v", err)
 		}
 		var headTime time.Time
-		if shadowFork, headTime, err = premine(ctx, t, types["ssv-premine"], net); err != nil {
+		if shadowFork, headTime, err = premine(ctx, t, types["ssv-premine"], net, rec); err != nil {
 			t.Fatalf("pre-mine: %v", err)
 		}
 		step("pre-mined the registrations")
@@ -98,14 +108,14 @@ func runClusterAttests(t *hivesim.T) {
 	if premined {
 		elFiles["/chain.rlp"] = net.elChain
 	}
-	el := t.StartClient(types["go-ethereum"], gethParams, hivesim.WithStaticFiles(elFiles))
+	el := t.StartClient(types["go-ethereum"], gethParams(chainID), hivesim.WithStaticFiles(elFiles))
 	elHead, _ := blockNumber(ctx, el.RPC())
 	step("geth up (%s, head block %d)", el.IP, elHead)
 
 	var hashes []string
 	if !premined {
 		// Pre-genesis: the txs wait in the pool and land in the first blocks.
-		if hashes, err = replayTxs(ctx, el.RPC()); err != nil {
+		if hashes, err = replayTxs(ctx, el.RPC(), rec); err != nil {
 			t.Fatalf("replay txs: %v", err)
 		}
 		step("submitted %d deployment/registration txs", len(hashes))
@@ -136,7 +146,7 @@ func runClusterAttests(t *hivesim.T) {
 	eth1WS := fmt.Sprintf("ws://%s:8546", el.IP)
 	if premined {
 		// The registry events are already past the follow distance: start right away.
-		startSSVNodes(t, types["ssv-node"], dir, beacon.base, eth1WS)
+		startSSVNodes(t, types["ssv-node"], dir, beacon.base, eth1WS, rec.SSVNetworkProxy)
 		step("%d SSV nodes started", operatorCount)
 	}
 
@@ -173,13 +183,13 @@ func runClusterAttests(t *hivesim.T) {
 			t.Fatalf("waiting for follow distance: %v", err)
 		}
 		step("EL at block %d: registry events past the follow distance", lastBlock+ssvFollowDistance)
-		startSSVNodes(t, types["ssv-node"], dir, beacon.base, eth1WS)
+		startSSVNodes(t, types["ssv-node"], dir, beacon.base, eth1WS, rec.SSVNetworkProxy)
 		step("%d SSV nodes started", operatorCount)
 	}
 
 	ssvValidators := make([]uint64, 0, genesisValidators-vcValidators)
-	for i := uint64(vcValidators); i < genesisValidators; i++ {
-		ssvValidators = append(ssvValidators, i)
+	for i := vcValidators; i < genesisValidators; i++ {
+		ssvValidators = append(ssvValidators, uint64(i))
 	}
 	waitClusterLive(ctx, t, step, net, beacon, el, ssvValidators)
 }
@@ -233,14 +243,14 @@ func waitClusterLive(ctx context.Context, t *hivesim.T, step func(string, ...any
 	}
 }
 
-func startSSVNodes(t *hivesim.T, clientType, dir, beaconURL, eth1WS string) {
+func startSSVNodes(t *hivesim.T, clientType, dir, beaconURL, eth1WS, registry string) {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []string
 	)
 	for i := 0; i < operatorCount; i++ {
-		cfg, err := renderSSVConfig(dir, i, beaconURL, eth1WS)
+		cfg, err := renderSSVConfig(dir, i, beaconURL, eth1WS, registry)
 		if err != nil {
 			t.Fatalf("ssv-node-%d config: %v", i, err)
 		}
@@ -281,10 +291,22 @@ func clientTypes(t *hivesim.T) map[string]string {
 	}
 	for _, w := range want {
 		if types[w] == "" {
-			t.Fatalf("client %q not available (run with hive/clients.yaml)", w)
+			t.Fatalf("client %q not available (run via hive/run.sh, which writes .hive/ssv-clients.yaml)", w)
 		}
 	}
 	return types
+}
+
+func envInt(name string, def int) int {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		panic(fmt.Sprintf("%s=%q: %v", name, v, err))
+	}
+	return n
 }
 
 func envDuration(name string, def, unit time.Duration) time.Duration {

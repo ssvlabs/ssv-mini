@@ -12,16 +12,32 @@ import (
 	"time"
 )
 
-const (
-	fixturesDir = "/fixtures"
+const fixturesDir = "/fixtures"
 
-	chainID = 3151908
-
-	// Validators [0, vcValidators) run on the lighthouse VC; [vcValidators, genesisValidators) are deposited
-	// at genesis but left idle for the SSV cluster (the static keyshares) — the same layout main.star guards.
-	vcValidators      = 64
-	genesisValidators = 74
+// Validators [0, vcValidators) run on the lighthouse VC; [vcValidators, genesisValidators) are deposited at
+// genesis but left idle for the SSV cluster (the static keyshares): the layout main.star guards. hive/run.sh
+// passes both from utils/constants.star (SSV_SEED_START_INDEX, SSV_MANAGED_VALIDATOR_COUNT), so a pool
+// rescaled with generate-static-keys.sh carries over.
+var (
+	vcValidators      = envInt("SSV_VC_VALIDATORS", 64)
+	genesisValidators = vcValidators + envInt("SSV_POOL_VALIDATORS", 10)
 )
+
+// fixtureChainID reads the chain id from the committed EL genesis (ethereum-package's network_id).
+func fixtureChainID() (int, error) {
+	var g struct {
+		Config struct {
+			ChainID int `json:"chainId"`
+		} `json:"config"`
+	}
+	if err := readJSON(filepath.Join(fixturesDir, "genesis/genesis.json"), &g); err != nil {
+		return 0, err
+	}
+	if g.Config.ChainID == 0 {
+		return 0, fmt.Errorf("no config.chainId in genesis/genesis.json")
+	}
+	return g.Config.ChainID, nil
+}
 
 // devnet holds the rendered genesis: the EL/CL inputs every client gets plus the VC keystores. The EL and CL
 // genesis are rendered separately: with a pre-mined chain the CL genesis waits for that chain's head.
@@ -55,8 +71,9 @@ func (d *devnet) renderEL(timestamp time.Time) error {
 		return err
 	}
 	genesis["timestamp"] = fmt.Sprint(timestamp.Unix())
-	// The replayed txs were signed against anvil's fee market (maxFee ~1 gwei, tip 1 gwei). A near-zero
-	// base fee keeps all of them includable however full the first blocks get.
+	// The replayed txs were signed against anvil's fee market, pinned at a 50 gwei base fee (record-txs.sh,
+	// which rejects a maxFeePerGas under 2 gwei). A near-zero base fee keeps all of them includable however
+	// full the first blocks get.
 	genesis["baseFeePerGas"] = "0x7"
 	return writeJSON(d.elGenesis, genesis)
 }
@@ -79,10 +96,24 @@ func (d *devnet) renderCL(genesisTime time.Time, shadowForkBlock string) error {
 		return err
 	}
 
+	// Deposit exactly the VC validators plus the SSV pool.
+	mnemonics, err := os.ReadFile(filepath.Join(fixturesDir, "genesis/mnemonics.yaml"))
+	if err != nil {
+		return err
+	}
+	if !countRe.Match(mnemonics) {
+		return fmt.Errorf("no count in genesis/mnemonics.yaml")
+	}
+	mnemonics = countRe.ReplaceAll(mnemonics, []byte("${1}"+fmt.Sprint(genesisValidators)))
+	mnemonicsFile := filepath.Join(d.dir, "mnemonics.yaml")
+	if err := os.WriteFile(mnemonicsFile, mnemonics, 0o644); err != nil {
+		return err
+	}
+
 	args := []string{"beaconchain",
 		"--eth1-config", d.elGenesis,
 		"--config", d.clConfig,
-		"--mnemonics", filepath.Join(fixturesDir, "genesis/mnemonics.yaml"),
+		"--mnemonics", mnemonicsFile,
 		"--state-output", d.clGenesis,
 		"--quiet",
 	}
@@ -146,7 +177,10 @@ func (d *devnet) currentSlot() uint64 {
 	return uint64(since / d.slot)
 }
 
-var mnemonicRe = regexp.MustCompile(`mnemonic:\s*"([^"]+)"`)
+var (
+	mnemonicRe = regexp.MustCompile(`mnemonic:\s*"([^"]+)"`)
+	countRe    = regexp.MustCompile(`(?m)^(\s*count:\s*)\d+`)
+)
 
 func genesisMnemonic() (string, error) {
 	b, err := os.ReadFile(filepath.Join(fixturesDir, "genesis/mnemonics.yaml"))

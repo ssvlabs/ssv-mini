@@ -16,10 +16,9 @@ import (
 const (
 	operatorCount = 4
 
-	ssvNetworkProxy = "0xBFfF570853d97636b78ebf262af953308924D3D8"
-	booleDormant    = 1000000000
-	ssvAPIPort      = 9232
-	ssvMetricsPort  = 9240
+	booleDormant   = 1000000000
+	ssvAPIPort     = 9232
+	ssvMetricsPort = 9240
 
 	// executionclient.DefaultFollowDistance in ssv.
 	ssvFollowDistance = 8
@@ -43,7 +42,8 @@ type ssvConfigData struct {
 }
 
 // renderSSVConfig writes the config for SSV node `index` (0-based, like ssv-mini) and returns its path.
-func renderSSVConfig(dir string, index int, beaconURL, eth1WS string) (string, error) {
+// registry is the SSVNetwork proxy the recording deployed.
+func renderSSVConfig(dir string, index int, beaconURL, eth1WS, registry string) (string, error) {
 	tmpl, err := template.ParseFiles(filepath.Join(fixturesDir, "ssv-config.yml.tmpl"))
 	if err != nil {
 		return "", err
@@ -63,7 +63,7 @@ func renderSSVConfig(dir string, index int, beaconURL, eth1WS string) (string, e
 		DomainType:           "0x00000000",
 		NextDomainType:       "0x00000001",
 		RegistrySyncOffset:   "1",
-		RegistryContractAddr: ssvNetworkProxy,
+		RegistryContractAddr: registry,
 		OperatorPrivateKey:   strings.TrimSpace(string(key)),
 		DiscoveryProtocolID:  "0x737376647635",
 		Discovery:            "mdns",
@@ -80,23 +80,46 @@ func renderSSVConfig(dir string, index int, beaconURL, eth1WS string) (string, e
 	return path, os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
-type recordedTxs struct {
-	ChainID int `json:"chainId"`
-	Txs     []struct {
-		Hash string `json:"hash"`
-		Raw  string `json:"raw"`
+// recording is static/recorded/txs.json (scripts/record-txs.sh), copied into the fixtures by hive/run.sh.
+type recording struct {
+	ChainID         int    `json:"chainId"`
+	SSVNetworkProxy string `json:"ssvNetworkProxy"`
+	Txs             []struct {
+		Stage string `json:"stage"`
+		Hash  string `json:"hash"`
+		Raw   string `json:"raw"`
 	} `json:"txs"`
 }
 
-// replayTxs submits the recorded deployment + registration txs in nonce order and returns their hashes.
-func replayTxs(ctx context.Context, el *rpc.Client) ([]string, error) {
-	var rec recordedTxs
+// loadRecording reads the recorded txs and checks they fit this devnet. The SSV nodes take the registry
+// address from the recording itself, so they always watch the contract the replay deploys.
+func loadRecording(chainID int) (*recording, error) {
+	var rec recording
 	if err := readJSON(filepath.Join(fixturesDir, "txs.json"), &rec); err != nil {
 		return nil, err
 	}
 	if rec.ChainID != chainID {
 		return nil, fmt.Errorf("txs.json recorded for chain %d, devnet is %d", rec.ChainID, chainID)
 	}
+	if rec.SSVNetworkProxy == "" {
+		return nil, fmt.Errorf("txs.json has no ssvNetworkProxy (recorded by an older record-txs.sh): delete static/recorded/ and re-run")
+	}
+	// record-txs.sh refuses this too. Batch 2+ of register-validators.cjs passes a cluster snapshot that depends
+	// on block numbers, so its replay would revert with IncorrectClusterState.
+	n := 0
+	for _, tx := range rec.Txs {
+		if tx.Stage == "validators" {
+			n++
+		}
+	}
+	if n != 1 {
+		return nil, fmt.Errorf("txs.json has %d validator registration txs, want 1 (a pool of at most 50): re-run scripts/record-txs.sh", n)
+	}
+	return &rec, nil
+}
+
+// replayTxs submits the recorded deployment + registration txs in nonce order and returns their hashes.
+func replayTxs(ctx context.Context, el *rpc.Client, rec *recording) ([]string, error) {
 	hashes := make([]string, 0, len(rec.Txs))
 	for i, tx := range rec.Txs {
 		var hash string

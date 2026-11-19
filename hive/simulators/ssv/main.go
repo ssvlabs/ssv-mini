@@ -26,7 +26,7 @@ func main() {
 	}
 	suite.Add(hivesim.TestSpec{
 		Name:        "cluster-attests",
-		Description: "Boots geth + lighthouse + 4 SSV nodes, replays the SSV contract deployment and registrations, and waits until every SSV-managed validator is live (attested) in one epoch.",
+		Description: "Boots geth + lighthouse + 4 SSV nodes, replays the SSV contract deployment and registrations, and waits until every SSV-managed validator has been live (attested or proposed) at least once, in any epoch. A bring-up smoke test, not a per-epoch performance check.",
 		Run:         runClusterAttests,
 	})
 	hivesim.MustRunSuite(hivesim.New(), suite)
