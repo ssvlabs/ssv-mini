@@ -1,0 +1,8 @@
+- mnemonic: "giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"  # a 24 word BIP 39 mnemonic
+  name: "main-mnemonic"
+  start: 0  # account index to start from
+  count: 74
+  wd_address: null
+  wd_prefix: 0x00  # 0x00=BLS, 0x01=execution address, 0x02=compounding, 0xB0=builder (EIP-7732)
+  balance: 32000000000
+  status: 0 # 0: active, 1: slashed, 2: exited

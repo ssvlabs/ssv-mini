@@ -1,0 +1,6 @@
+# Kept out of the Kurtosis package upload. Kurtosis reads only this file, not .gitignore.
+# hive/run.sh's hive checkout: large, and its workspace/logs change on every hive run, which would bust
+# Kurtosis' package cache on the next `make run`.
+hive/.hive/
+# scripts/record-txs.sh's per-run work dirs. static/recorded/ itself must stay: the replay reads it.
+static/recorded/.record.*/
