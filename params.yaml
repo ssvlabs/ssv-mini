@@ -86,6 +86,8 @@ nodes:
 # (keys: ssv, anchor, monitor, redis, postgres, deployer), e.g. for a local `make prepare-anchor` build:
 # images:
 #   anchor: "node/anchor"
-# The monitor runs the public image, so `make prepare-monitor` isn't needed for the default net.
+# The monitor runs the public image, pinned like the other images, so `make prepare-monitor` isn't needed.
+# It is published for linux/amd64 only and runs emulated on Apple Silicon; for a native arm64 monitor, run
+# `make prepare-monitor` and set `monitor: "monitor"` here.
 images:
-  monitor: "ssvlabs/ethereum2-monitor:latest"
+  monitor: "ssvlabs/ethereum2-monitor:v1.0.138"
