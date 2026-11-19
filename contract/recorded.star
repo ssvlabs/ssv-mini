@@ -4,7 +4,7 @@ constants = import_module("../utils/constants.star")
 # and exit if their event syncer has nothing to process yet. Hence the wait before starting them.
 FOLLOW_DISTANCE = 8
 
-SLOTS_PER_EPOCH = 32
+SLOTS_PER_EPOCH = 32  # mainnet preset; the budget below assumes it (a minimal-preset network would aim late)
 # Seconds from ethereum-package fixing the genesis timestamp to the CL producing its first block (EL/CL/VC
 # launch, images cached). On a laptop, genesis timestamp to SSV start measured 45s at 4s slots, i.e. ~1s plus
 # the blocks below; this leaves headroom for a slower host.
@@ -12,7 +12,9 @@ GENESIS_TO_CHAIN_START_SECONDS = 15
 # Blocks from the chain starting to the SSV nodes starting: the recorded txs land in block 2, then
 # FOLLOW_DISTANCE + 1 more.
 BLOCKS_BEFORE_SSV = FOLLOW_DISTANCE + 3
-# Aim the SSV start this many slots before epoch 1, so a slow start still catches all of it.
+# Aim the SSV start this many slots before epoch 1, so a slow start still catches all of it. ethereum-package
+# 6.1.0 adds its own padding on top of genesis_delay (5s + 5s per participant), so in practice the nodes come up
+# about one slot earlier than this aims for.
 MARGIN_SLOTS = 2
 
 REPLAY_SCRIPT = """
@@ -29,6 +31,11 @@ def call(method, params):
     return resp["result"]
 
 txs = [t for t in json.load(open("/recorded/txs.json"))["txs"] if t["stage"] in stages]
+# scripts/record-txs.sh refuses this too; guard an older recording. Batch 2+ of register-validators.cjs passes a
+# cluster snapshot that depends on block numbers, so its replay would revert with IncorrectClusterState.
+n_validators = len([t for t in txs if t["stage"] == "validators"])
+if n_validators > 1:
+    sys.exit("recorded validators stage is %d txs; only a single batch (<= 50 validators) replays, re-run scripts/record-txs.sh" % n_validators)
 for t in txs:
     try:
         call("eth_sendRawTransaction", [t["raw"]])
@@ -93,8 +100,10 @@ def replay(plan, el_rpc, with_validators):
 # too late misses epoch-1 duties already past (so "every validator live" slips to epoch 2).
 def align_genesis_to_epoch(network_args):
     params = dict(network_args["network_params"])
-    slot = params.get("seconds_per_slot", 12)
-    params["genesis_delay"] = GENESIS_TO_CHAIN_START_SECONDS + (BLOCKS_BEFORE_SSV + MARGIN_SLOTS - SLOTS_PER_EPOCH) * slot
+    # ethereum-package takes the slot time as either key (slot_duration_ms wins and derives seconds_per_slot).
+    # Work in ms and floor-divide: genesis_delay must stay an int, ethereum-package splices it into shell arithmetic.
+    slot_ms = params.get("slot_duration_ms", 0) or params.get("seconds_per_slot", 12) * 1000
+    params["genesis_delay"] = (GENESIS_TO_CHAIN_START_SECONDS * 1000 + (BLOCKS_BEFORE_SSV + MARGIN_SLOTS - SLOTS_PER_EPOCH) * slot_ms) // 1000
     aligned = dict(network_args)
     aligned["network_params"] = params
     return aligned

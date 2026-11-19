@@ -16,6 +16,9 @@ source "$PROJECT_DIR/constants.env"
 # i.e. the SSV pool stays < 1/3 of the set. Step 4 below syncs utils/constants.star and the params'
 # preregistered_validator_count; regenerate the aetheria seed to match (ssvlabs/aetheria
 # `orchestrator/cmd/gen-testnet-seed -count <SSV_VALIDATOR_COUNT> -start <CL_VALIDATOR_START>`).
+# The recorded-txs fast path (use_recorded_txs, params-fast.yaml, hive) supports at most 50 SSV validators: one
+# register-validators.cjs batch (scripts/record-txs.sh explains why and refuses a bigger pool). The hive
+# simulator and scripts/bench-kurtosis.sh read the layout from utils/constants.star, so they follow a rescale.
 CL_VALIDATOR_START=${CL_VALIDATOR_START:-64}     # VC total = SSV seed start index
 SSV_VALIDATOR_COUNT=${SSV_VALIDATOR_COUNT:-10}   # SSV pool size
 NUM_OPERATORS=4
@@ -152,7 +155,7 @@ PREREGISTERED=$((CL_VALIDATOR_START + SSV_VALIDATOR_COUNT))
 sed -i.bak -E "s/^(SSV_SEED_START_INDEX = )[0-9]+/\1$CL_VALIDATOR_START/;s/^(SSV_MANAGED_VALIDATOR_COUNT = )[0-9]+/\1$SSV_VALIDATOR_COUNT/" "$PROJECT_DIR/utils/constants.star" && rm -f "$PROJECT_DIR/utils/constants.star.bak"
 verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_SEED_START_INDEX = ([0-9]+).*/\1/p" "$CL_VALIDATOR_START" "SSV_SEED_START_INDEX"
 verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_MANAGED_VALIDATOR_COUNT = ([0-9]+).*/\1/p" "$SSV_VALIDATOR_COUNT" "SSV_MANAGED_VALIDATOR_COUNT"
-for P in "$PROJECT_DIR"/params.yaml "$PROJECT_DIR"/params-gloas.yaml "$PROJECT_DIR"/params-boole.yaml; do
+for P in "$PROJECT_DIR"/params.yaml "$PROJECT_DIR"/params-gloas.yaml "$PROJECT_DIR"/params-boole.yaml "$PROJECT_DIR"/params-fast.yaml; do
     [ -f "$P" ] || continue
     sed -i.bak -E "s/^([[:space:]]*preregistered_validator_count:[[:space:]]*)[0-9]+/\1$PREREGISTERED/" "$P" && rm -f "$P.bak"
     verify_synced "$P" "s/^[[:space:]]*preregistered_validator_count:[[:space:]]*([0-9]+).*/\1/p" "$PREREGISTERED" "preregistered_validator_count"
