@@ -1,3 +1,5 @@
+constants = import_module("../utils/constants.star")
+
 NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR = "/node-keystores"
 
 PRYSM_PASSWORD = "password"
@@ -5,7 +7,7 @@ PRYSM_PASSWORD_FILEPATH_ON_GENERATOR = "/tmp/prysm-password.txt"
 
 KEYSTORES_GENERATION_TOOL_NAME = "/app/eth2-val-tools"
 
-ETH_VAL_TOOLS_IMAGE = "protolambda/eth2-val-tools:latest"
+ETH_VAL_TOOLS_IMAGE = constants.ETH2_VAL_TOOLS_IMAGE
 
 SUCCESSFUL_EXEC_CMD_EXIT_CODE = 0
 
@@ -23,8 +25,9 @@ KEYSTORE_GENERATION_FINISHED_FILEPATH_FORMAT = "/tmp/keystores_generated-{0}-{1}
 SERVICE_NAME = "validator-key-generation-ssv-validator-keystore"
 
 ENTRYPOINT_ARGS = [
-    "sleep",
-    "99999",
+    "tail",
+    "-f",
+    "/dev/null",
 ]
 
 SERVICE_CONFIG = ServiceConfig(
@@ -37,7 +40,7 @@ ARTIFACT_PREFIX = 'ssv-validators'
 
 
 def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
-    plan.add_service(SERVICE_NAME, SERVICE_CONFIG)
+    plan.add_service(SERVICE_NAME, SERVICE_CONFIG, description="Starting validator keystore generator")
 
     stop_index = start_index + validator_count
 
@@ -61,9 +64,11 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
     command_str = " && ".join(all_sub_command_strs)
 
     command_result = plan.exec(
-        recipe=ExecRecipe(command=["sh", "-c", command_str]), service_name=SERVICE_NAME
+        recipe=ExecRecipe(command=["sh", "-c", command_str]),
+        service_name=SERVICE_NAME,
+        description="Generating validator keystores [{}, {})".format(start_index, stop_index),
     )
-    plan.verify(command_result["code"], "==", SUCCESSFUL_EXEC_CMD_EXIT_CODE)
+    plan.verify(command_result["code"], "==", SUCCESSFUL_EXEC_CMD_EXIT_CODE, description="Verifying validator keystore generation succeeded")
 
     artifact_name = "{0}-{1}-{2}".format(
         ARTIFACT_PREFIX,
@@ -71,7 +76,7 @@ def generate_validator_keystores(plan, mnemonic, start_index, validator_count):
         stop_index - 1,
     )
     artifact_name = plan.store_service_files(
-        SERVICE_NAME, NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR, name=artifact_name
+        SERVICE_NAME, NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR, name=artifact_name, description="Storing validator keystores"
     )
 
     base_dirname_in_artifact = path_base(NODE_KEYSTORES_OUTPUT_DIRPATH_FORMAT_STR)

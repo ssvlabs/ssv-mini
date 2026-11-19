@@ -13,8 +13,9 @@ def wait_until_node_reached_block(plan, el_service_name, target_block):
         field="extract." + BLOCK_NUMBER_FIELD,
         assertion=">=",
         target_value=target_block,
-        timeout="20m",  # Ethereum nodes can take a while to get in good shapes, especially at the beginning
+        timeout="5m",
         service_name=el_service_name,
+        description="Waiting for EL to reach block {}".format(target_block),
     )
 
 # Constructs an rpc request to get the block receipt 
@@ -47,8 +48,9 @@ def wait_until_node_reached_epoch(plan, cl_service_name, target_epoch):
         field="extract." + CURRENT_EPOCH_FIELD,
         assertion=">=",
         target_value=target_epoch,
-        timeout="20m",  # Consensus clients can take a while to sync, especially at the beginning
+        timeout="5m",
         service_name=cl_service_name,
+        description="Waiting for CL to reach epoch {}".format(target_epoch),
     )
 
 

@@ -8,185 +8,131 @@ SSV-Mini is a Kurtosis-based development environment for running local SSV (Secr
 
 ## Essential Commands
 
-### Core Operations
 ```bash
-# Prepare all required Docker images and dependencies (automated setup)
-make prepare
+make help              # Show all available commands
+make prepare           # Clone SSV repo + build Docker image (first time)
+make run               # Start the testnet
+make reset             # Clean + restart from genesis
+make show              # Show running services and ports
+make logs              # Tail ssv-node-0 logs (SERVICE=ssv-node-1 for others)
+make clean             # Remove all enclaves
+make restart-ssv-nodes # Rebuild and restart SSV nodes only
+make generate-keys     # Regenerate static operator keys + keyshares
+```
 
-# Start the complete SSV network (blockchain + SSV nodes + contracts)
-make run
+### ssv-mini CLI (from SSV repo)
 
-# View all running services and their status
-make show
+```bash
+# Install (from ssv-mini repo):
+ln -sf "$(pwd)/scripts/ssv-mini" ~/bin/ssv-mini
 
-# Clean shutdown and restart from genesis
-make reset
-
-# Clean all Kurtosis enclaves
-make clean
-
-# Restart only SSV nodes (after rebuilding SSV Docker image)
-make restart-ssv-nodes
+# Usage (from SSV repo directory):
+ssv-mini              # Create testnet or push code to running one
+ssv-mini start        # Force start a new testnet
+ssv-mini restart      # Rebuild SSV image and restart nodes only (~30s)
+ssv-mini stop         # Stop the testnet
+ssv-mini logs [N]     # Tail SSV node N logs
 ```
 
 ### Docker Image Prerequisites
-Before running the network, build required Docker images. Use `make prepare` for automated setup:
 
 ```bash
-# Automated setup (recommended) - clones repos and builds all required images
-make prepare
+# Automated (recommended):
+make prepare                         # SSV only (default: stage branch)
+SSV_COMMIT=main make prepare         # SSV from specific branch
+make prepare-all                     # SSV + Anchor + Monitor
 
-# Manual setup (alternative):
-# SSV Node (required)
-git clone https://github.com/ssvlabs/ssv.git
-cd ssv && git checkout %YOUR_BRANCH%
-docker build -t node/ssv .
-
-# Anchor Node (if using anchor nodes)
-git clone https://github.com/sigp/anchor.git
-cd anchor && git checkout origin/unstable
-docker build -f Dockerfile.devnet -t node/anchor .
-
-# Monitor (if enabling monitoring)
-git clone https://github.com/ssvlabs/ethereum2-monitor.git
-cd ethereum2-monitor && docker build -t monitor .
+# Manual:
+cd ../ssv && docker build --load -t node/ssv .
+cd ../anchor && docker build --load -f Dockerfile.devnet -t node/anchor .
 ```
 
-### Service Logs and Debugging
-```bash
-# View logs for specific services
-kurtosis service logs -f localnet {service-name}
+### Configuration
 
-# Examples:
-kurtosis service logs -f localnet ssv-node-0
-kurtosis service logs -f localnet anchor-node-0
-kurtosis service logs -f localnet el-1-geth-lighthouse
-```
+Image pins and shared chain constants (genesis mnemonic, validator owner, SSV contract addresses) live in `constants.env`, the single source of truth that the Starlark package (`utils/constants.star`), the Makefile and the scripts all read. Bump an image there once and every network picks it up.
 
-### Configuration Management
 Network configuration is controlled via `params.yaml`:
-- Node counts (`nodes.ssv.count`, `nodes.anchor.count`)
-- Validator distribution (`network.participants[].validator_count`)
-- Monitoring (`monitor.enabled`)
-- Network parameters (`network.network_params`)
-- **Port configuration** (`ports.*`) - Predictable port mapping for key services
+- `nodes.ssv.count` / `nodes.anchor.count`: Node counts
+- `use_static_keys`: Use pre-computed keys (default: true, ~40s faster)
+- `pre_register_validators`: Bulk-register the full static keyshare set on-chain at bring-up under the deployer's owner (default: false; needed for per-validator fork-transition coverage, aetheria#141 A2). Registering the FULL set is incompatible with the executor's validator-registering suites (`(event)`/`(ptc)`/`(proposer)`/`(p2p)`) on the same enclave — both register the same pubkeys → `ValidatorAlreadyExists`. To share one enclave, partition the pool with `pre_register_count` below
+- `pre_register_count`: Split the pool when `pre_register_validators` is true — register only cohort P, the first N indices of the aetheria seed [`SSV_SEED_START_INDEX`, +`SSV_MANAGED_VALIDATOR_COUNT`) of `utils/constants.star`, and leave the rest for the executor to register as cohort D, so pre-registration and a validator-registering suite share one enclave (aetheria#176). 0 (default) registers the full set; a positive count must be < the pool size so D is non-empty. Only a CONTIGUOUS prefix is nonce-safe (the sharesData nonce sequence is 0-based; ssvlabs/ssv-mini#36). Bring-up publishes the actual N, the P/D pubkeys and the registration context (owner, operatorIds, SSVNetwork address) as the `pre-registered.json` enclave artifact (`kurtosis files download <enclave> pre-registered.json`), so the executor reads them instead of re-declaring them (ssvlabs/ssv-mini#53)
+- `unsafe_skip_validator_layout_guard`: Bypass main.star's validator-layout guard so a **standalone** base-chain liveness probe can run VCs past the seed start (Gloas devnet stall investigation, ssvlabs/ssv-mini#38). Default false. Safe **only** when nothing adopts the seed: `pre_register_validators: false` (true is rejected in code) and no executor validator-registering suite, or the extra VCs overlap the seed → double-sign → slashing. See `params-gloas.yaml` for the full contract
+- `boole_epoch`: Boole fork activation epoch
+- `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
+- `monitor.enabled`: Enable monitoring stack
+- `images.*`: per-network overrides of the service images pinned in `constants.env`; a participant's `el_image` / `cl_image` likewise overrides the constants.env default for its client type
 
-## Architecture Overview
-
-### High-Level System Components
-
-1. **Ethereum Network Layer** (`blockchain/`):
-   - Geth (execution layer) + Lighthouse (consensus layer) 
-   - Pre-configured with 74 validators across 2 nodes
-   - Automated block production and finalization
-
-2. **SSV Protocol Layer** (`nodes/ssv/`):
-   - Configurable number of SSV operator nodes (default: 4)
-   - Each node runs with unique operator keys
-   - JSON logging, metrics, and API endpoints enabled
-   - Custom network configuration for testnet operation
-
-3. **Smart Contract Layer** (`contract/`):
-   - Automated SSV contract deployment on network startup
-   - Operator registration and validator registration flows
-   - Integration with SSV token and cluster contracts
-
-4. **Key Management** (`generators/`):
-   - `operator-keygen.star`: Generates operator public/private keypairs
-   - `validator-keygen.star`: Creates validator keystores from mnemonics
-   - `keysplit.star`: Splits validator keys into keyshares for operators
-
-5. **Monitoring & Observability** (`monitor/`):
-   - Optional SSV network monitor with PostgreSQL + Redis
-   - Real-time validator performance tracking
-   - Grafana dashboards and metrics collection
-
-### Data Flow and Dependencies
-
-1. **Network Initialization**: Ethereum network starts → Smart contracts deploy
-2. **Key Generation**: Operator keys generated → Validator keystores created
-3. **Key Distribution**: Validator keys split into keyshares → Distributed to operators
-4. **Registration**: Operators register on-chain → Validators register with clusters
-5. **Operation**: SSV nodes start → Begin validator duties → Monitor tracks performance
-
-### Critical Configuration Files
-
-- `params.yaml`: Main network configuration (node counts, validators, features, ports)
-- `main.star`: Main orchestration logic using Kurtosis framework
-- `nodes/ssv/config.yml.tmpl`: SSV node configuration template with template variables
-- `nodes/anchor/config/config.yaml`: Anchor consensus client configuration
-- `utils/constants.star`: Smart contract addresses and network constants
-- `kurtosis.yml`: Kurtosis package metadata and description
-
-### Testing and Development Workflow
-
-1. Make code changes to SSV node implementation
-2. Rebuild Docker image: `docker build -t node/ssv .`
-3. Restart SSV nodes: `make restart-ssv-nodes`
-4. Monitor logs: `kurtosis service logs -f localnet ssv-node-0`
-5. Use monitoring dashboard or direct API calls for validation
-
-### Service Dependencies
-
-- SSV nodes require mature EL client (waits for block 16+ before starting)
-- Monitor requires at least one SSV node in exporter mode
-- Contract deployment must complete before node startup
-- Key generation and registration must complete before node configuration
-
-## Port Configuration
-
-### Internal Kubernetes Service Access
-The following ports are exposed as container ports for internal Kubernetes service access only:
-
-**Key Service Ports:**
-- **SSV Node 0 API**: 30100
-- **SSV Node 1 API**: 30102  
-- **SSV Node 2 API**: 30104
-- **SSV Node 3 API**: 30106
-- **Ethereum Monitor API**: 30200
-- **Ethereum EL RPC**: 30010
-- **Ethereum CL API**: 30020
-
-### Configuration Files
-- `params.yaml`: Kurtosis port configuration
-- `kubernetes/chart/ssv-mini/values.yaml`: Helm chart port configuration
-
-### Kubernetes Service Access
-Services expose these ports via ClusterIP for internal pod-to-pod communication:
+Make-level overrides (substituted into a generated copy of `PARAMS_FILE`, sources untouched):
+- `GLOAS_FORK_EPOCH=N`: retune the ePBS fork epoch (gloas params only)
+- `BOOLE_FORK_EPOCH=N`: retune the SSV Boole fork epoch (boole and gloas params; gloas keeps Boole dormant unless set)
+- `PRE_REGISTER_VALIDATORS=true|false`: toggle the flag above without editing the file
+- `PRE_REGISTER_COUNT=N`: partition the pool (cohort P = first N keyshares), leaving D for a registering suite — the aetheria#176 split (requires `PRE_REGISTER_VALIDATORS=true`; validated at plan time)
 
 ```bash
-# Access SSV Node APIs from within Kubernetes
-curl http://<service-name>:30100/health    # SSV Node 0
-curl http://<service-name>:30102/health    # SSV Node 1
-curl http://<service-name>:30104/health    # SSV Node 2  
-curl http://<service-name>:30106/health    # SSV Node 3
+make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDATORS=true
+```
 
-# Access Monitor API
-curl http://<service-name>:30200/api/status
+## Architecture
 
-# Access Ethereum services
-curl -X POST -H "Content-Type: application/json" \
+### Startup Pipeline (5 steps)
+
+1. **Ethereum Network**: EL (geth) + CL (lighthouse) + validators via ethereum-package
+2. **Contract Deployment**: SSV contracts deployed via Hardhat (ssv-network v2.0.0)
+3. **Key Preparation**: Static keys loaded (or generated dynamically if `use_static_keys: false`)
+4. **Registration**: Operators + validators registered on-chain
+5. **SSV Nodes**: All nodes started in parallel via `plan.add_services()`
+
+### Module Structure
+
+- `main.star`: Orchestration entrypoint — coordinates all 5 steps
+- `nodes/ssv/`: SSV node config template + service config
+- `nodes/anchor/`: Anchor node startup (parallel for nodes 1+)
+- `contract/`: `deployer.star` (deploy contracts), `interactions.star` (register operators/validators)
+- `generators/`: `operator-keygen.star`, `validator-keygen.star`, `keysplit.star`
+- `blockchain/`: `blocks.star` — block/epoch wait helpers
+- `monitor/`: PostgreSQL + Redis + monitor daemon/API
+- `utils/`: Constants (parsed from `constants.env`), image helpers
+- `constants.env`: Image pins + shared chain constants, read by Starlark, the Makefile and the scripts
+- `static/`: Pre-computed operator keys + keyshares (committed to repo)
+- `scripts/`: `ssv-mini` CLI, `generate-static-keys.sh`, shell helpers
+
+### Key Dependencies
+
+- SSV nodes require EL at block 16+ (Event Syncer needs mature chain)
+- Contract deployment needs EL at block 1+
+- Static keys assume 4 operators and the aetheria seed [`SSV_SEED_START_INDEX`, +`SSV_MANAGED_VALIDATOR_COUNT`) of `utils/constants.star` ([64, 74) by default); scale with `SSV_VALIDATOR_COUNT=N ./scripts/generate-static-keys.sh` (regenerate the aetheria seed to the same N). Keep N < `CL_VALIDATOR_START`/2 so the SSV pool stays < 1/3 of the set; past that, raise `CL_VALIDATOR_START` and the params' `validator_count*count` with it
+- Changing operator/validator counts requires `use_static_keys: false` or `make generate-keys`
+
+## Health Checks
+
+```bash
+# Beacon chain sync status
+curl -s http://127.0.0.1:33001/eth/v1/node/syncing | jq .
+
+# Current slot
+curl -s http://127.0.0.1:33001/eth/v1/beacon/headers/head | jq '.data.header.message.slot'
+
+# Validator count
+curl -s http://127.0.0.1:33001/eth/v1/beacon/states/head/validators | jq '.data | length'
+
+# EL block number (port from `make show`)
+curl -s -X POST -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-  http://<service-name>:30010
-
-curl http://<service-name>:30020/eth/v1/node/health
+  http://127.0.0.1:<el-rpc-port> | jq -r '.result'
 ```
 
 ## Development Notes
 
-- All Starlark (`.star`) files use Kurtosis framework for service orchestration
-- Main orchestration flow in `main.star` coordinates service startup dependencies
-- Network ID `3151908` is used for consistent testnet configuration
-- SSV nodes use discovery via mdns (local) or discv5 (with ENR bootnodes)
-- Default setup creates 4-operator clusters with Byzantine fault tolerance
-- Monitor provides PostgreSQL schema and Redis caching for performance data
-- Port configuration enables predictable internal Kubernetes service access
-- Template-based configuration system using `.tmpl` files for dynamic config generation
+- Starlark files: 4-space indent, snake_case functions, UPPER_SNAKE_CASE constants
+- All `plan.*` calls should include a `description` parameter for readable progress output
+- Network ID: `3151908`
+- SSV nodes use mDNS discovery (local) or discv5 (with ENR bootnodes)
+- Default: 4-operator clusters with Byzantine fault tolerance
+- `tail -f /dev/null` for idle service entrypoints (not `sleep 99999`)
 
-### Key Starlark Modules Structure
-- `main.star`: Primary orchestration and service coordination
-- `nodes/`: Node-specific configuration and startup logic (SSV, Anchor)
-- `generators/`: Key generation utilities (operator keys, validator keys, keyshares)
-- `contract/`: Smart contract deployment and interaction logic
-- `utils/`: Shared utilities, constants, and helper functions
-- `monitor/`: Monitoring stack deployment (PostgreSQL, Redis, Monitor)
+## Troubleshooting
+
+- **Kurtosis version mismatch**: `brew upgrade kurtosis-tech/tap/kurtosis-cli && kurtosis engine restart`
+- **Docker not running**: Start Docker Desktop / OrbStack first
+- **Stale enclave**: `make clean && make run`
+- **Resource constraints**: Docker needs 8+ CPUs, 16GB+ RAM recommended

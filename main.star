@@ -1,6 +1,6 @@
-ethereum_package = import_module("github.com/ethpandaops/ethereum-package/main.star")
-input_parser = import_module("github.com/ethpandaops/ethereum-package/src/package_io/input_parser.star")
-genesis_constants = import_module("github.com/ethpandaops/ethereum-package/src/prelaunch_data_generator/genesis_constants/genesis_constants.star")
+ethereum_package = import_module("github.com/ethpandaops/ethereum-package/main.star@6.1.0")
+input_parser = import_module("github.com/ethpandaops/ethereum-package/src/package_io/input_parser.star@6.1.0")
+genesis_constants = import_module("github.com/ethpandaops/ethereum-package/src/prelaunch_data_generator/genesis_constants/genesis_constants.star@6.1.0")
 ssv_node = import_module("./nodes/ssv/node.star")
 anchor_node = import_module("./nodes/anchor/node.star")
 blocks = import_module("./blockchain/blocks.star")
@@ -15,129 +15,241 @@ monitor = import_module("./monitor/monitor.star")
 cluster = import_module("./nodes/cluster.star")
 
 def run(plan, args):
-    plan.print("validating input")
     ssv_node_count = args["nodes"]["ssv"]["count"]
     anchor_node_count = args["nodes"]["anchor"]["count"]
-    
-    # Retrieve all Docker images at the start
+    use_static_keys = args.get("use_static_keys", True)
+
     ssv_image = utils.get_ssv_image(args)
     anchor_image = utils.get_anchor_image(args)
     monitor_image = utils.get_monitor_image(args)
     postgres_image = utils.get_postgres_image(args)
     redis_image = utils.get_redis_image(args)
-    foundry_image_spec = utils.get_foundry_image_spec(args)
+    deployer_image_spec = utils.get_deployer_image_spec(args)
 
-    plan.print("validating configurations...")
     if not cluster.is_valid_cluster_size(ssv_node_count + anchor_node_count):
-        fail("invalid cluster size: ", str(ssv_node_count + anchor_node_count))
+        fail("invalid cluster size: " + str(ssv_node_count + anchor_node_count) + ". Valid sizes: 4, 7, 10, 13 (3f+1 for BFT). Edit nodes.ssv.count in params.yaml.")
 
-    if ssv_node_count == 0 and args["observability"]["monitor"]["enabled"]:
+    if ssv_node_count == 0 and args["monitor"]["enabled"]:
         fail("SSV Node count is equal to '0'. Monitor must not be enabled")
 
-    plan.print("launching blockchain network")
-    network_args = args["network"]
-    ethereum_network = ethereum_package.run(plan, network_args)
-    
-    plan.print("network launched. Network output: " + json.indent(json.encode(ethereum_network)))
+    # ── Step 1: Launch Ethereum network ──
+    plan.print("Step 1/5: Launching Ethereum network (EL + CL + validators)")
+    # The params file's network block, with the constants.env defaults (EL/CL images, genesis mnemonic) filled in.
+    network_args = utils.apply_network_defaults(args["network"], use_static_keys)
 
-    plan.print("blockchain network is running. Waiting for it to be ready")
+    # Guard the aetheria local_testnet seed (ssvlabs/aetheria orchestrator/script/insert_test_data.sql): the
+    # deposited-but-VC-idle validators the SSV operators adopt, at indices
+    # [SSV_SEED_START_INDEX, +SSV_MANAGED_VALIDATOR_COUNT) ([64, 74) by default). Genesis deposits
+    # [0, preregistered_validator_count); VCs run [0, validator_count*count), summed over ALL participant
+    # groups since validators are assigned sequentially (a second EL/CL group extends the range). The VC
+    # total must equal the seed start: past it, VCs double-sign with the SSV operators -> slashing; short of
+    # it, they lack the 2/3 the chain needs to justify before SSV adopts -> permanent deadlock (aetheria#176).
+    # unsafe_skip_validator_layout_guard opts out for a standalone liveness probe (below).
+    vc_validators = 0
+    for p in network_args["participants"]:
+        vc_validators += p["validator_count"] * p["count"]
+    deposited_validators = network_args["network_params"]["preregistered_validator_count"]
+    # Universal invariant (both paths): genesis must deposit at least as many validators as the VCs run,
+    # else a validator client would run undeposited keys.
+    if deposited_validators < vc_validators:
+        fail("preregistered_validator_count ({}) must be >= total VC validators ({}) - otherwise validator clients run undeposited keys.".format(deposited_validators, vc_validators))
+    # unsafe_skip_validator_layout_guard opts out of the exact-layout check for a STANDALONE base-chain
+    # liveness probe (ssvlabs/ssv-mini#38), whose VC total runs past the seed start. Safe only when nothing
+    # adopts the seed - pre_register_validators: false (Step 4 skipped) and no aetheria executor suite that
+    # registers validators ((event)/(ptc)/(proposer)/(p2p)) - else the extra VCs double-sign with the SSV
+    # operators -> slashing. Pre-registration is rejected below; an executor suite can't be detected here,
+    # so that half is on the caller.
+    if args.get("unsafe_skip_validator_layout_guard", False):
+        if args.get("pre_register_validators", False):
+            fail("unsafe_skip_validator_layout_guard is incompatible with pre_register_validators: true - pre-registration makes the SSV operators run the seed at indices [{}, {}), so a VC set over {} would overlap them -> double-sign -> slashing. The skip flag is for bare liveness probes with no SSV validators; drop one of the two.".format(constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX))
+        # The monitor FATAL-crashes after ~2min of head-stall - exactly the condition a liveness probe
+        # observes - so warn (not fail: monitor-on does not affect the beacon-API head-slot evidence).
+        if args["monitor"]["enabled"]:
+            plan.print("WARNING: unsafe_skip_validator_layout_guard=true with monitor.enabled=true - the monitor FATAL-crashes after ~2min of head-stall, i.e. exactly the condition a liveness probe (ssvlabs/ssv-mini#38) is trying to observe. Set monitor.enabled: false for probe runs.")
+        plan.print("WARNING: unsafe_skip_validator_layout_guard=true - skipping the validator-layout guard (VCs run [0,{}), genesis deposits [0,{})). SAFE ONLY if no SSV-managed validators are adopted on this enclave (no pre_register, no aetheria validator suite); otherwise VC/SSV overlap -> double-sign -> slashing.".format(vc_validators, deposited_validators))
+    else:
+        # Deposits must match the seed end exactly, not just cover it: in dynamic mode (use_static_keys:
+        # false) the SSV pool is preregistered_validator_count - vc_validators, so extra deposits would grow
+        # it past the seed and Step 4 would publish a cohort D spilling beyond it (no revert). This mirrors
+        # Step 3's static pool-size check; over-provisioned probes take the unsafe_skip path instead.
+        if vc_validators != constants.SSV_SEED_START_INDEX or deposited_validators != constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT:
+            fail("local_testnet validator layout drift: VCs run [0,{}), genesis deposits [0,{}). The aetheria seed adopts indices [{}, {}) (must be deposited AND VC-idle) - keep total validator_count*count == {} (exactly) and preregistered_validator_count == {} (exactly - extra deposits inflate the SSV pool past the seed in dynamic mode), or update the aetheria seed. Both directions are fatal: a VC total over {} overlaps the seed -> double-sign -> slashing; under it the VCs fall short of the 2/3 majority the chain needs to justify before SSV adopts -> permanent genesis-bootstrap deadlock (aetheria#176). For a standalone base-chain liveness probe with no SSV validators (ssvlabs/ssv-mini#38), set unsafe_skip_validator_layout_guard: true.".format(vc_validators, deposited_validators, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + constants.SSV_MANAGED_VALIDATOR_COUNT, constants.SSV_SEED_START_INDEX))
+    # Validate pre_register_count (the pool-split knob) here at plan time, before the enclave is built —
+    # bad input must fail OUT of the dangerous mode, not into it (failing at Step 4 leaves a half-built
+    # enclave to tear down). Negative or > the pool would fall back to registering the full set (the
+    # ValidatorAlreadyExists collision the split avoids); a positive count with pre_register_validators:
+    # false registers nothing while cohort P is expected. register-validators.cjs keeps its own [1, N]
+    # check as defence-in-depth.
+    pre_register_count = args.get("pre_register_count", 0)
+    if pre_register_count < 0 or pre_register_count >= constants.SSV_MANAGED_VALIDATOR_COUNT:
+        fail("pre_register_count ({}) must be < {} (the pool size): a positive value splits the pool (P = first N, cohort D = the rest) and must leave D non-empty; the full pool would leave D empty, so use 0 to register everything with no split.".format(pre_register_count, constants.SSV_MANAGED_VALIDATOR_COUNT))
+    if pre_register_count > 0 and not args.get("pre_register_validators", False):
+        fail("pre_register_count ({}) > 0 requires pre_register_validators: true — otherwise Step 4 is skipped and nothing registers while cohort P is expected. Set pre_register_validators: true (or PRE_REGISTER_VALIDATORS=true), or drop the count.".format(pre_register_count))
+
+    ethereum_network = ethereum_package.run(plan, network_args)
+
     cl_service_name, cl_url, el_service_name, el_rpc, el_ws = utils.get_network_attributes(ethereum_network.all_participants)
-    
+
     blocks.wait_until_node_reached_block(plan, el_service_name, 1)
 
-    plan.print("deploying SSV smart contracts")
-    deployer.deploy(plan, el_rpc, genesis_constants, foundry_image_spec)
+    # ── Step 2: Deploy SSV smart contracts ──
+    plan.print("Step 2/5: Deploying SSV smart contracts")
+    deployer.deploy(plan, el_rpc, genesis_constants, deployer_image_spec)
 
-    non_ssv_validators = network_args["participants"][0]["validator_count"] * network_args["participants"][0]["count"]
-    total_validators = network_args["network_params"]["preregistered_validator_count"]
-    
-    eth_args = input_parser.input_parser(plan, network_args)
-    
-    # Generate new keystore files
-    keystore_files = validator_keygen.generate_validator_keystores(
-        plan, 
-        eth_args.network_params.preregistered_validator_keys_mnemonic, 
-        non_ssv_validators, 
-        total_validators - non_ssv_validators
-    )
-
-    # Generate public/private keypair for every operator we are going to deploy
-    operator_keygen.start_cli(plan, keystore_files, args)
-    
+    # ── Step 3: Prepare operator keys and keyshares ──
     number_of_keys = ssv_node_count + anchor_node_count
-    
-    plan.print("generating operator keys. Number of keys: " + str(number_of_keys))
-    public_keys, private_keys, pem_artifacts = operator_keygen.generate_keys(plan, number_of_keys)
 
-    # Once we have all of the keys, register each operator with the network
-    operator_data_artifact = interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
+    if use_static_keys:
+        plan.print("Step 3/5: Loading pre-computed static keys and keyshares")
+        # The committed static keyshare set is the real validator pool; SSV_MANAGED_VALIDATOR_COUNT (which the
+        # layout guard, the pre_register_count bound and the Step 4 index math all read) must mirror its size.
+        # generate-static-keys.sh keeps the two in sync — assert it so a hand-regenerated out.json fails loud
+        # here instead of silently skewing those bounds.
+        static_pool_size = len(json.decode(read_file("./static/keyshares/out.json"))["shares"])
+        if static_pool_size != constants.SSV_MANAGED_VALIDATOR_COUNT:
+            fail("static keyshare pool size ({}) != SSV_MANAGED_VALIDATOR_COUNT ({}) — regenerate with scripts/generate-static-keys.sh (updates both) or fix the constant in utils/constants.star.".format(static_pool_size, constants.SSV_MANAGED_VALIDATOR_COUNT))
+        public_keys = []
+        private_keys = []
+        pem_artifacts = []
+        for i in range(number_of_keys):
+            public_keys.append(read_file("./static/keys/operator-{}/public_key.txt".format(i)).strip())
+            private_keys.append(read_file("./static/keys/operator-{}/unencrypted_private_key.txt".format(i)).strip())
+            pem_artifacts.append(plan.upload_files(
+                "./static/keys/operator-{}/unencrypted_private_key.txt".format(i),
+                name="key-{}".format(i),
+                description="Uploading static operator key {}".format(i),
+            ))
 
-    # Split the ssv validator keys into into keyshares
-    keyshare_artifact = keysplit.split_keys(
-        plan, 
-        keystore_files, 
-        operator_data_artifact,
-        constants.SSV_NETWORK_PROXY_CONTRACT, 
-        constants.OWNER_ADDRESS,
-        el_rpc,
-        args
-    )
+        interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
+        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
 
-    plan.print("registering network validators")
-    # Register validators on the network
-    interactions.register_validators(
-        plan,
-        keyshare_artifact,
-        constants.SSV_NETWORK_PROXY_CONTRACT, 
-        constants.SSV_TOKEN_CONTRACT,
-        el_rpc,
-        genesis_constants,
-        args
-    )
+        keyshare_artifact = plan.upload_files(
+            "./static/keyshares/out.json",
+            name="keyshares.json",
+            description="Uploading pre-computed keyshares",
+        )
+    else:
+        plan.print("Step 3/5: Generating operator keys and keyshares (dynamic mode)")
+        non_ssv_validators = vc_validators  # validators consumed by the genesis EL/CL VCs (total across participants; computed in the layout guard above)
+        total_validators = network_args["network_params"]["preregistered_validator_count"]
 
+        eth_args = input_parser.input_parser(plan, network_args)
+
+        keystore_files = validator_keygen.generate_validator_keystores(
+            plan,
+            eth_args.network_params.preregistered_validator_keys_mnemonic,
+            non_ssv_validators,
+            total_validators - non_ssv_validators
+        )
+        plan.remove_service(validator_keygen.SERVICE_NAME, description="Cleaning up validator keystore generator")
+
+        operator_keygen.start_cli(plan, keystore_files, args)
+
+        public_keys, private_keys, pem_artifacts = operator_keygen.generate_keys(plan, number_of_keys)
+        plan.remove_service(constants.ANCHOR_CLI_SERVICE_NAME, description="Cleaning up operator key generator")
+
+        operator_data_artifact = interactions.register_operators(plan, public_keys, constants.SSV_NETWORK_PROXY_CONTRACT)
+        plan.remove_service(constants.DEPLOYER_SERVICE_NAME, description="Cleaning up contract deployer")
+
+        keyshare_artifact = keysplit.split_keys(
+            plan,
+            keystore_files,
+            operator_data_artifact,
+            constants.SSV_NETWORK_PROXY_CONTRACT,
+            constants.OWNER_ADDRESS,
+            el_rpc,
+            args
+        )
+        plan.remove_service(constants.ANCHOR_KEYSPLIT_SERVICE, description="Cleaning up keysplit service")
+
+    # ── Step 4: Register validators on-chain ──
+    # Default: skipped on the v2.0.0 contracts. The aetheria executor registers and funds its own
+    # validators (registration is payable/msg.value on v2.0.0) onto a clean, empty cluster. Under the
+    # pool split (pre_register_count > 0) the executor's cohort D instead registers onto the P-populated
+    # cluster — it passes the LIVE on-chain cluster snapshot (validatorCount N, N*2.5 ETH), not the zero
+    # struct this repo's P path uses, so nonce continuity AND the cluster snapshot both hold. Validated
+    # end-to-end by aetheria#176.
+    #
+    # Opt-in pre-registration (pre_register_validators: true): register the static keyshares on-chain
+    # here so a standalone `kurtosis run` (no aetheria) yields operators that actually run validators.
+    # Needed by consumers that gate CI on this testnet without the executor (e.g. sigp/anchor). This
+    # is the devnet pre-registration path tracked in ssvlabs/ssv-mini#29.
+    #
+    # ON-mode contract: the static keyshares cover the seed (see the layout guard above). Pre-registering
+    # the FULL set (pre_register_count 0) collides with the aetheria executor's validator-registering
+    # suites ((event)/(ptc)/(proposer)/(p2p)): both register the same pubkeys -> ValidatorAlreadyExists,
+    # so run those on flag-off enclaves. pre_register_count: N registers only cohort P, the seed's first N
+    # indices, leaving the rest for the executor's cohort D so both share one enclave (aetheria#176).
+    # register_validators reads pre_register_count from args.
+    if args.get("pre_register_validators", False):
+        effective_count = pre_register_count if pre_register_count > 0 else constants.SSV_MANAGED_VALIDATOR_COUNT
+        plan.print("Step 4/5: Pre-registering {} validator(s) on-chain — cohort P = indices [{}, {}) (pre_register_validators=true, pre_register_count={})".format(
+            effective_count, constants.SSV_SEED_START_INDEX, constants.SSV_SEED_START_INDEX + effective_count, pre_register_count))
+        manifest_artifact = interactions.register_validators(
+            plan,
+            keyshare_artifact,
+            constants.SSV_NETWORK_PROXY_CONTRACT,
+            el_rpc,
+            genesis_constants,
+            args,
+        )
+        # The pre-registered.json artifact register_validators just published is the authoritative source of N
+        # (ssvlabs/ssv-mini#53). Surface only its download handle, not N itself, so the artifact stays the
+        # single source of truth for the split point rather than being restated in a second place.
+        plan.print("Step 4/5: Published the pre-registration manifest (split point N + cohort P/D) as enclave artifact '{}' (read with: kurtosis files download <enclave> {})".format(manifest_artifact, manifest_artifact))
+        plan.remove_service(constants.REGISTER_VALIDATOR_SERVICE_NAME, description="Cleaning up validator registration service")
+    else:
+        plan.print("Step 4/5: Skipping validator pre-registration (executor registers its own; see #29)")
+
+    # ── Step 5: Start SSV and Anchor nodes ──
     node_index = 0
     enr = ""
 
     if anchor_node_count > 0:
-        plan.print("deploying Anchor nodes. Node count: " + str(anchor_node_count))
-
-        # start up all of the anchor nodes
-        config = utils.anchor_testnet_artifact(plan)
+        plan.print("Step 5/5: Starting {} Anchor + {} SSV nodes".format(anchor_node_count, ssv_node_count))
+        config = utils.anchor_testnet_artifact(plan, args)
         enr = anchor_node.start(plan, anchor_node_count, cl_url, el_rpc, el_ws, pem_artifacts, config, anchor_image)
+    else:
+        plan.print("Step 5/5: Starting {} SSV nodes".format(ssv_node_count))
 
     node_index += anchor_node_count
 
-    plan.print("deploying SSV nodes. Node count: " + str(ssv_node_count))
-   
-    # NOTE: When more than one cluster is deployed, Monitor requires this URL to point to an SSV Node running in Exporter mode.
     ssv_node_api_url = None
 
     if ssv_node_count > 0:
-        # SSV Node requires a 'mature' Execution Layer (EL) client for the Event Syncer component to function properly. 
-        # Otherwise, it may crash and require a restart, hence some reasonable delay needs to be introduced.
         blocks.wait_until_node_reached_block(plan, el_service_name, 16)
 
-    # Start up the ssv nodes
-    for _ in range(0, ssv_node_count):
-        is_exporter = False
-        config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr, is_exporter)
-        plan.print("generated SSV node config artifact: " + json.indent(json.encode(config)))
+        ssv_configs = {}
+        for _ in range(0, ssv_node_count):
+            is_exporter = False
+            config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, private_keys[node_index], enr, is_exporter, args)
+            service_name = "ssv-node-{}".format(node_index)
+            ssv_configs[service_name] = ssv_node.get_service_config(node_index, config, ssv_image)
+            node_index += 1
 
-        plan.print("starting SSV node with index: " + str(node_index))
-        node_service = ssv_node.start(plan, node_index, config, is_exporter, ssv_image)
+        # Optional archive-exporter node (enabled in params-boole). Read-only: an empty operator key —
+        # it doesn't sign, and its p2p identity auto-generates like every node's. generate_config renders
+        # it in archive mode, which serves the committee duty traces the aetheria (boole) Step 12 reads.
+        # Singular by design (the aetheria side pins the hostname `ssv-exporter`), hence a bool, not a count.
+        exporter_enabled = args["nodes"].get("exporter", {}).get("enabled", False)
+        if exporter_enabled:
+            exporter_config = ssv_node.generate_config(plan, node_index, cl_url, el_ws, "", enr, True, args)
+            ssv_configs["ssv-exporter"] = ssv_node.get_service_config(node_index, exporter_config, ssv_image)
 
-        plan.print("ssv node started. Service name: " + node_service.name)
+        ssv_services = plan.add_services(
+            ssv_configs,
+            description="Starting {} SSV services in parallel".format(len(ssv_configs)),
+        )
 
-        if ssv_node_api_url == None:
-            ssv_node_api_url = node_service.ports[ssv_node.SSV_API_PORT_NAME].url
-
-        node_index += 1
+        # The exporter above reused node_index without incrementing it, so node_index is still
+        # anchor_node_count + ssv_node_count here — this resolves to the first SSV node.
+        first_ssv_name = "ssv-node-{}".format(node_index - ssv_node_count)
+        ssv_node_api_url = ssv_services[first_ssv_name].ports[ssv_node.SSV_API_PORT_NAME].url
 
     monitor_enabled = args["monitor"]["enabled"]
     if monitor_enabled:
         if ssv_node_count == 0:
-            plan.print("no SSV nodes deployed. Skipping monitor deployment")
             return
 
-        plan.print("launching monitor. SSV node API URL: {}. CL URL: {}".format(ssv_node_api_url, cl_url))
+        plan.print("Launching monitor stack")
         monitor.start(plan, ssv_node_api_url, cl_url, monitor_image, postgres_image, redis_image)

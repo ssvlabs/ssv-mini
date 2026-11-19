@@ -1,5 +1,4 @@
 utils = import_module("../../utils/utils.star")
-shared_utils = import_module("github.com/ethpandaops/ethereum-package/src/shared_utils/shared_utils.star")
 constants = import_module("../../utils/constants.star")
 
 SSV_API_PORT = 9232
@@ -16,12 +15,10 @@ def generate_config(
         operator_private_key,
         enr,
         is_exporter,
+        args,
 ):
-    discovery = ""
-    if enr == "":
-        discovery = "mdns"
-    else:
-        discovery = "discv5"
+    boole_epoch = args.get("boole_epoch", constants.BOOLE_DORMANT_EPOCH)
+    discovery = "mdns" if enr == "" else "discv5"
 
     # Prepare data for the template
     data = struct(
@@ -31,21 +28,24 @@ def generate_config(
         BeaconNodeAddr=consensus_client,
         ETH1Addr=execution_client,
         Network="local-testnet", #if not set - default to "mainnet"
+        NetworkName="testnet",  #relevant for interop with Anchor, otherwise getting mismatched subnets starting with Boole
         DomainType="0x00000000",
+        NextDomainType="0x00000001",  #Boole specific, inert otherwise; deviates from SIPs but required for interop with Anchor
         RegistrySyncOffset="1",
         RegistryContractAddr=constants.SSV_NETWORK_PROXY_CONTRACT,
         OperatorPrivateKey=operator_private_key,
         DiscoveryProtocolID = "0x737376647635", # ssvdv5
         Discovery=discovery,
         ENR=enr,
-        Exporter=is_exporter,
+        ExporterEnabled=is_exporter,
+        # archive (not standard) also registers /v1/exporter/traces/* — the committee duty traces the
+        # aetheria (boole) Step 12 reads; standard mode wouldn't. Inert for operator nodes (ExporterEnabled=False).
+        ExporterMode="archive" if is_exporter else "standard",
         SSVAPIPort=SSV_API_PORT,
         MetricsAPIPort=SSV_METRICS_PORT,
-        EnableTraces=True
+        EnableTraces=True,
+        BooleEpoch=boole_epoch,
     )
-
-    plan.print(
-        "generating SSV node config artifact with data: " + json.indent(json.encode(data)))
 
     ssv_config_template = read_file("config.yml.tmpl")
     file_name = "ssv-config-{}.yaml".format(index)
@@ -56,17 +56,18 @@ def generate_config(
             file_name: utils.new_template_and_data(ssv_config_template, data),
         },
         name=file_name,
+        description="Rendering SSV node {} config".format(index),
     )
 
     return rendered_artifact
 
-def start(plan, index, config_artifact, is_exporter, image):
-    SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
-    service_name = "ssv-node-{}".format(index) if not is_exporter else "ssv-exporter"
+SSV_CONFIG_DIR_PATH_ON_SERVICE = "/ssv-config"
+
+def get_service_config(index, config_artifact, image):
+    """Returns a ServiceConfig for an SSV node without starting it (for use with plan.add_services)."""
     config_path = "{}/ssv-config-{}.yaml".format(SSV_CONFIG_DIR_PATH_ON_SERVICE, index)
 
-    # Minimal service configuration
-    service_config = ServiceConfig(
+    return ServiceConfig(
         image=image,
         entrypoint=[
             "make",
@@ -83,19 +84,20 @@ def start(plan, index, config_artifact, is_exporter, image):
                 number=SSV_METRICS_PORT,
                 transport_protocol="TCP",
                 application_protocol="http",
-            )
+            ),
         },
-        cmd=[],
         env_vars={
             "CONFIG_PATH": config_path,
-            # When traces are enabled, these two OTEL configurations are required
-            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc", 
-            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317"
+            # Advertise the container's IP. Left unset, the image's start-node target fills HOST_ADDRESS with the
+            # host's public IP (an OpenDNS lookup), which no node in the enclave can dial, so under discv5 (a mixed
+            # SSV + Anchor committee) the SSV nodes never connect to each other and all their traffic relays
+            # through Anchor.
+            "HOST_ADDRESS": constants.PRIVATE_IP_PLACEHOLDER,
+            "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "grpc",
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://alloy:4317",
         },
         files={
-            SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,  # Map the configuration artifact to the desired path
+            SSV_CONFIG_DIR_PATH_ON_SERVICE: config_artifact,
         },
-)
-
-    # Add the service
-    return plan.add_service(service_name, service_config)
+        private_ip_address_placeholder=constants.PRIVATE_IP_PLACEHOLDER,
+    )

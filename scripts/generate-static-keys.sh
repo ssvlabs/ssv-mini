@@ -1,0 +1,168 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+STATIC_DIR="$PROJECT_DIR/static"
+WORK_DIR=$(mktemp -d)
+
+# MNEMONIC, OWNER_ADDRESS, KEYGEN_ANCHOR_IMAGE and ETH2_VAL_TOOLS_IMAGE come from constants.env, the single
+# source of truth the Starlark side reads too, so the generated keys match what main.star deploys.
+source "$PROJECT_DIR/constants.env"
+
+# The SSV seed layout, both env-overridable to scale the pool (ssvlabs/aetheria#176): keyshares for indices
+# [CL_VALIDATOR_START, +SSV_VALIDATOR_COUNT). CL_VALIDATOR_START must also equal the VC total (params
+# validator_count*count) — scale it WITH the pool so the VCs keep the 2/3 the chain needs to justify on,
+# i.e. the SSV pool stays < 1/3 of the set. Step 4 below syncs utils/constants.star and the params'
+# preregistered_validator_count; regenerate the aetheria seed to match (ssvlabs/aetheria
+# `orchestrator/cmd/gen-testnet-seed -count <SSV_VALIDATOR_COUNT> -start <CL_VALIDATOR_START>`).
+CL_VALIDATOR_START=${CL_VALIDATOR_START:-64}     # VC total = SSV seed start index
+SSV_VALIDATOR_COUNT=${SSV_VALIDATOR_COUNT:-10}   # SSV pool size
+NUM_OPERATORS=4
+
+trap "rm -rf $WORK_DIR" EXIT
+
+echo "=== Generating static keys and keyshares ==="
+
+# Clean and create output
+rm -rf "$STATIC_DIR"
+mkdir -p "$STATIC_DIR/keys" "$STATIC_DIR/keyshares"
+
+# Step 1: Generate validator keystores
+echo ""
+echo "Step 1/3: Generating validator keystores..."
+docker run --rm \
+    -v "$WORK_DIR:/work" \
+    "$ETH2_VAL_TOOLS_IMAGE" \
+    keystores \
+    --insecure \
+    --prysm-pass password \
+    --out-loc /work/keystores \
+    --source-mnemonic "$MNEMONIC" \
+    --source-min $CL_VALIDATOR_START \
+    --source-max $((CL_VALIDATOR_START + SSV_VALIDATOR_COUNT))
+echo "  Generated $SSV_VALIDATOR_COUNT validator keystores"
+
+# Step 2: Generate operator RSA keys
+echo ""
+echo "Step 2/3: Generating $NUM_OPERATORS operator RSA keypairs..."
+for i in $(seq 0 $((NUM_OPERATORS - 1))); do
+    mkdir -p "$WORK_DIR/keys/operator-$i"
+done
+
+docker run --rm --entrypoint="" \
+    -v "$WORK_DIR/keys:/keys" \
+    "$KEYGEN_ANCHOR_IMAGE" \
+    sh -c "
+        for i in \$(seq 0 $((NUM_OPERATORS - 1))); do
+            anchor keygen --force --datadir /tmp/anchor
+            cp /tmp/anchor/public_key.txt /keys/operator-\$i/
+            cp /tmp/anchor/unencrypted_private_key.txt /keys/operator-\$i/
+        done
+    "
+
+# Copy keys to static dir and build operator_data.json
+for i in $(seq 0 $((NUM_OPERATORS - 1))); do
+    mkdir -p "$STATIC_DIR/keys/operator-$i"
+    cp "$WORK_DIR/keys/operator-$i/public_key.txt" "$STATIC_DIR/keys/operator-$i/"
+    cp "$WORK_DIR/keys/operator-$i/unencrypted_private_key.txt" "$STATIC_DIR/keys/operator-$i/"
+    echo "  Operator $i: keys generated"
+done
+
+# Build operator_data.json using python3 (available on macOS and Linux)
+python3 -c "
+import json, os
+operators = []
+for i in range($NUM_OPERATORS):
+    with open('$STATIC_DIR/keys/operator-{}/public_key.txt'.format(i)) as f:
+        pk = f.read().strip()
+    operators.append({'id': i + 1, 'publicKey': pk})
+with open('$WORK_DIR/operator_data.json', 'w') as f:
+    json.dump({'operators': operators}, f, indent=2)
+"
+echo "  Built operator_data.json"
+
+# Step 3: Generate keyshares
+echo ""
+echo "Step 3/3: Generating keyshares..."
+
+docker run --rm --entrypoint="" \
+    -v "$WORK_DIR/keystores:/keystores:ro" \
+    -v "$WORK_DIR/operator_data.json:/operator_data.json:ro" \
+    -v "$STATIC_DIR/keyshares:/output" \
+    -e OWNER_ADDRESS="$OWNER_ADDRESS" \
+    "$KEYGEN_ANCHOR_IMAGE" \
+    sh -c '
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends jq >/dev/null 2>&1
+
+        OPERATOR_IDS=$(jq -r ".operators[].id" /operator_data.json | tr "\n" "," | sed "s/,$//" )
+        PUBLIC_KEYS=""
+        for ID in $(echo $OPERATOR_IDS | tr "," " "); do
+            KEY=$(jq -r ".operators[] | select(.id == $ID) | .publicKey" /operator_data.json)
+            if [ -z "$PUBLIC_KEYS" ]; then PUBLIC_KEYS="$KEY"; else PUBLIC_KEYS="$PUBLIC_KEYS,$KEY"; fi
+        done
+
+        NONCE=0
+        TEMP=$(mktemp -d)
+        SHARES=""
+
+        for VALIDATOR_DIR in /keystores/keys/*; do
+            [ -d "$VALIDATOR_DIR" ] || continue
+            VALIDATOR_KEY=$(basename "$VALIDATOR_DIR")
+            echo "  Splitting key: $VALIDATOR_KEY (nonce=$NONCE)"
+
+            anchor keysplit manual \
+                --keystore-paths "$VALIDATOR_DIR/voting-keystore.json" \
+                --password-file "/keystores/secrets/$VALIDATOR_KEY" \
+                --owner "$OWNER_ADDRESS" \
+                --output-path "$TEMP/$VALIDATOR_KEY.json" \
+                --operators "$OPERATOR_IDS" \
+                --nonce "$NONCE" \
+                --public-keys "$PUBLIC_KEYS" > /dev/null 2>&1
+
+            SHARE=$(jq -c ".shares[0]" "$TEMP/$VALIDATOR_KEY.json")
+            if [ -z "$SHARES" ]; then SHARES="$SHARE"; else SHARES="$SHARES,$SHARE"; fi
+            NONCE=$((NONCE + 1))
+        done
+
+        echo "{\"shares\": [$SHARES]}" | jq "." > /output/out.json
+        echo ""
+        echo "  Generated keyshares with $NONCE shares"
+    '
+
+# Step 4: sync the layout mirrors so main.star's guard + the params match the keyshares just generated.
+# SSV_SEED_START_INDEX = the VC total (CL_VALIDATOR_START); the pool follows it; preregistered covers both.
+# The VC cohort itself (params validator_count*count) is per-network and NOT synced here — only params-gloas
+# carries a non-default VC (aetheria's provision-pool.sh sets it per suite). It must EQUAL CL_VALIDATOR_START
+# or main.star's guard fails the run, so the NOTE below flags it at generation time.
+
+# verify_synced re-reads a value back out and confirms it matches: sed -i exits 0 even when it substituted
+# nothing, so a mirror whose line drifts (a renamed key, a reformatted assignment) would silently stay stale
+# while the summary below claims it moved — and with main.star's guard now enforcing equality, that surfaces
+# as a hard plan-time fail three steps later, not here. Fail loudly at the substitution instead.
+verify_synced() {
+    local file="$1" extract="$2" want="$3" what="$4" got
+    got=$(sed -nE "$extract" "$file")
+    [ "$got" = "$want" ] || { echo "ERROR: $what in $file is '$got', expected '$want' — sed did not substitute (line format changed?)" >&2; exit 1; }
+}
+
+echo ""
+echo "Step 4/4: Syncing layout mirrors (VC start=$CL_VALIDATOR_START, SSV pool=$SSV_VALIDATOR_COUNT)..."
+PREREGISTERED=$((CL_VALIDATOR_START + SSV_VALIDATOR_COUNT))
+sed -i.bak -E "s/^(SSV_SEED_START_INDEX = )[0-9]+/\1$CL_VALIDATOR_START/;s/^(SSV_MANAGED_VALIDATOR_COUNT = )[0-9]+/\1$SSV_VALIDATOR_COUNT/" "$PROJECT_DIR/utils/constants.star" && rm -f "$PROJECT_DIR/utils/constants.star.bak"
+verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_SEED_START_INDEX = ([0-9]+).*/\1/p" "$CL_VALIDATOR_START" "SSV_SEED_START_INDEX"
+verify_synced "$PROJECT_DIR/utils/constants.star" "s/^SSV_MANAGED_VALIDATOR_COUNT = ([0-9]+).*/\1/p" "$SSV_VALIDATOR_COUNT" "SSV_MANAGED_VALIDATOR_COUNT"
+for P in "$PROJECT_DIR"/params.yaml "$PROJECT_DIR"/params-gloas.yaml "$PROJECT_DIR"/params-boole.yaml; do
+    [ -f "$P" ] || continue
+    sed -i.bak -E "s/^([[:space:]]*preregistered_validator_count:[[:space:]]*)[0-9]+/\1$PREREGISTERED/" "$P" && rm -f "$P.bak"
+    verify_synced "$P" "s/^[[:space:]]*preregistered_validator_count:[[:space:]]*([0-9]+).*/\1/p" "$PREREGISTERED" "preregistered_validator_count"
+done
+echo "  SSV_SEED_START_INDEX=$CL_VALIDATOR_START, SSV_MANAGED_VALIDATOR_COUNT=$SSV_VALIDATOR_COUNT, preregistered_validator_count=$PREREGISTERED"
+
+echo "  NOTE: params validator_count*count must equal SSV_SEED_START_INDEX ($CL_VALIDATOR_START); not synced here — hand-edit params if you changed CL_VALIDATOR_START."
+
+echo ""
+echo "=== Static files generated ==="
+find "$STATIC_DIR" -type f | sort | while read f; do
+    echo "  $f"
+done

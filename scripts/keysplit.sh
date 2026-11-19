@@ -1,14 +1,9 @@
 #!/bin/bash
 set -e
 
-# Check if jq is installed
-if ! command -v jq &> /dev/null
-then
-    echo "jq is not installed. Installing..."
-    apt update -y
-    apt install -y jq
-else
-    echo "jq is already installed."
+# Install jq if not available (anchor image may not include it)
+if ! command -v jq &> /dev/null; then
+    apt-get update -qq && apt-get install -y -qq --no-install-recommends jq >/dev/null 2>&1
 fi
 
 NONCE="0"
@@ -35,14 +30,13 @@ for VALIDATOR_DIR in ../keystores/keys/*; do
   if [ -d "$VALIDATOR_DIR" ]; then
     VALIDATOR_KEY=$(basename "$VALIDATOR_DIR")
     echo "Processing validator key: $VALIDATOR_KEY with nonce: $NONCE"
-    
-    PASSWORD=$(cat ../keystores/secrets/$VALIDATOR_KEY)
+
     KEYSTORE_PATH="$VALIDATOR_DIR/voting-keystore.json"
     TEMP_OUTPUT="$TEMP_DIR/$VALIDATOR_KEY-out.json"
     
     anchor keysplit manual \
-      --keystore-path "$KEYSTORE_PATH" \
-      --password "$PASSWORD" \
+      --keystore-paths "$KEYSTORE_PATH" \
+      --password-file "../keystores/secrets/$VALIDATOR_KEY" \
       --owner "$OWNER_ADDRESS" \
       --output-path "$TEMP_OUTPUT" \
       --operators "$OPERATOR_IDS" \

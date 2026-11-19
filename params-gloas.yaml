@@ -1,0 +1,142 @@
+# Gloas / ePBS (EIP-7732) fork-transition test: genesis on Fulu, forks into Gloas at epoch 2.
+# Usage: make prepare && make prepare-monitor && make run-gloas
+#        (or: make run PARAMS_FILE=params-gloas.yaml)
+# SSV_COMMIT defaults to stage, which carries ePBS since ssvlabs/ssv#2901.
+#
+# Clients: the Sepolia Glamsterdam releases, Lighthouse v8.3.0-rc.0 + Geth v1.17.7 (Gloas/Amsterdam activated
+# on Sepolia on 2026-10-06), pinned below as a validated pair rather than taken from constants.env's defaults
+# (whose Lighthouse v8.2.2 lacks §6, see below). Validated 2026-10-05 on a max-scale aetheria
+# (glamsterdam-fork) run (3000 SSV validators, SSV stage nodes + the ssvlabs/ssv#3045 exporter): every graded
+# §4 block landed with a full §6 payload, PTC votes and §2 attestations settled correct on-chain, the CL head
+# advanced through the fork, and dora indexed the Gloas blocks without a decode error.
+# §6: Lighthouse v8.3 serves the envelope-produce endpoint; v8.2 returns 404 there.
+# Builder registrations: no builder is configured, so Lighthouse rejects every non-empty register_validator
+# batch with 500 BuilderMissing and the SSV nodes log "failed to submit validator registrations" on pre-fork
+# slots. Harmless for these tests: registrations stop at the fork, and nothing here needs a builder.
+# Fork-slot PTC: v8.3.0-rc.0 can't serve the fork epoch's PTC duties before the fork block lands, so the fork
+# slot's PTC goes unvoted network-wide (SSV nodes and Lighthouse's own VCs alike); later slots are clean.
+# Expected on this pin: v8.3.0 fixes it (sigp/lighthouse#10193); ssvlabs/ssv#3087 tracks an SSV-side retry.
+# Genesis generator: it must deploy the EIP-8282 builder deposit/exit contracts where Geth expects them
+# (deposit 0x0000bff46984e3725691fa540a8c7589300d8282). Without them Geth builds no payload after the fork
+# ("empty system contract"), so every post-fork block is payload-less and no transaction lands. 6.2.3
+# deploys them; the ethereum-package@6.1.0 default (5.3.5) predates Gloas, and 6.0.8 predates the addresses.
+#
+# Every image here is pinned to a fixed build (geth + CL by digest, dora + generator by fixed tag), so the net
+# is reproducible. To bump a client: read the new tag's digest
+# (`docker buildx imagetools inspect <image:tag>`), validate a run, then update el_image / cl_image below.
+#
+# Gloas is purely beacon-driven on the SSV side: the node reads GLOAS_FORK_EPOCH from the beacon
+# node's /config/spec at runtime, so no SSV-side fork knob is needed. Boole (the SSV-protocol fork) is
+# independent of Gloas and — postponed by the SSV team — stays DORMANT through Glamsterdam, so ePBS is
+# validated pre-Boole (Alan): per-validator aggregator runner, Alan gossip topics/domain. boole_epoch
+# below keeps Boole dormant; override via BOOLE_FORK_EPOCH to activate it (the (boole) suite on
+# local_testnet_boole covers it).
+#
+# Monitor (E2M) is enabled and Gloas-aware: ethereum2-monitor#504 decodes the Gloas blocks, and #510 grades
+# the ePBS duties (§6 payload status and execution block from the envelope, PTC votes, the §2
+# payload-timeliness vote). ssv-mini builds the monitor from origin/main, so its image carries both.
+
+network:
+  participants:
+  - el_type: geth
+    # Geth v1.17.7 (ethereum/client-go:v1.17.7), digest-pinned.
+    el_image: ethereum/client-go@sha256:6e9669cca5359cdb2c5571198d51e78fc18128b56bff50a1f8422d1c2946fd64
+    cl_type: lighthouse
+    # Lighthouse v8.3.0-rc.0 (sigp/lighthouse:v8.3.0-rc.0), digest-pinned.
+    cl_image: sigp/lighthouse@sha256:3e5f0609c74b824d3cb1049920169114d99fd7bc9082b996b3adae3d4e9ef8dc
+    # Lighthouse holds 16 events per SSE topic by default and drops the oldest for a subscriber that falls
+    # behind. A slot's PTC votes (up to 512) arrive in bursts, so the monitor lost some and read them as
+    # misses (sigp/lighthouse#10214, ssvlabs/ethereum2-monitor#593). 32x holds 512 events, a full slot of votes.
+    cl_extra_params:
+      - "--http-sse-capacity-multiplier=32"
+    # VC cohort = validator_count*count, which must equal the SSV seed start (SSV_SEED_START_INDEX of
+    # utils/constants.star). Before SSV adopts the seed, the chain justifies on this always-on cohort alone,
+    # so it needs 2/3 of the set: the SSV pool must stay < 1/3. Short of that, the chain can't justify, and
+    # SSV's slashing protection (adoption-epoch highest source vs the stuck source=0) then refuses every
+    # attestation as a surround vote — a permanent genesis-bootstrap deadlock (aetheria#176). aetheria's
+    # provision-pool.sh sets these per suite: the default below (32*2 = 64 VCs, ~13.5% SSV) for most,
+    # scaled up for glamsterdam-fork's large pool (e.g. 3600*2 = 7200 VCs for 3000 SSV validators, ~29%).
+    validator_count: 32
+    count: 2
+    supernode: true
+
+  additional_services:
+    - dora
+
+  # dora's default image can't render Gloas blocks; pin a Gloas-capable master build. The previous pin,
+  # master-0e63023 (2026-06-30), predates devnet-8's five-list execution requests (EIP-8282): it can't
+  # decode the Gloas block bodies ("ParentExecutionRequests.Deposits: incorrect offset: first offset 20
+  # does not match expected 12"), so its indexer stalls at the fork and retries every 10 s. Master builds
+  # since the 2026-08-12 go-eth2-client / dynamic-ssz bump carry the regenerated SSZ types.
+  dora_params:
+    image: ethpandaops/dora:master-3d0d825
+
+  # Pin a generator that deploys the EIP-8282 contracts where Geth expects them (rationale in the header).
+  ethereum_genesis_generator_params:
+    image: ethpandaops/ethereum-genesis-generator:6.2.3
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    fulu_fork_epoch: 0        # Fulu must precede Gloas — activate at genesis
+    gloas_fork_epoch: 2       # ePBS fork; small so the transition lands a few minutes in (tune freely)
+    perfect_peerdas_enabled: false
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+# pre_register_validators for the gloas net (see params.yaml for the flag's semantics and its
+# incompatibility with the executor's validator-registering suites). Off by default. Turned on (e.g.
+# PRE_REGISTER_VALIDATORS=true), Step 4 registers the static keyshare set at bring-up so the fleet
+# runs SSV-managed validators from genesis, which the aetheria (transition) suite's per-validator
+# fork-transition checks need (aetheria#141 A2).
+pre_register_validators: false
+
+# pre_register_count partitions the static keyshare pool when pre_register_validators is true: register
+# only the first N keyshares as cohort P, leaving the rest for the aetheria executor's committee suites
+# to register as cohort D at keystore offset N — the index-partitioned split that lets pre-registration
+# and a registering suite share one enclave (aetheria#176; the unified glamsterdam-fork suite runs here).
+# 0 (default) registers the FULL set. See params.yaml for the full semantics and the #36 prefix constraint.
+pre_register_count: 0
+
+# unsafe_skip_validator_layout_guard bypasses main.star's validator-layout guard so a STANDALONE
+# base-chain liveness probe can run VCs past the SSV seed start (ssvlabs/ssv-mini#38: does the Gloas
+# devnet stall ~1.4 epochs past the fork because the default 74-validator set gives degenerate
+# attestation-committee / PTC coverage?). To use it, set this true, raise validator_count (and/or count)
+# and preregistered_validator_count together to the new VC total (e.g. 64 x 2 = 128 VCs,
+# preregistered_validator_count: 128), and set monitor.enabled: false (the monitor FATAL-crashes on a
+# head-stall). SAFE ONLY on a bare run that adopts no SSV validators: pre_register_validators: false
+# (main.star rejects true) and no aetheria executor validator-registering suite
+# ((event)/(ptc)/(proposer)/(p2p); undetectable in-repo). Otherwise the extra VCs overlap the seed ->
+# double-sign -> slashing.
+unsafe_skip_validator_layout_guard: false
+
+monitor:
+  enabled: true    # Gloas-aware (see the header)
+
+# Dormant Boole: BOOLE_DORMANT_EPOCH, the default anyway (utils/constants.star explains why not MaxUint64),
+# spelled out so BOOLE_FORK_EPOCH has a key to substitute.
+boole_epoch: 1000000000
+
+nodes:
+  ssv:
+    count: 4
+  anchor:
+    count: 0
+  # Archive-exporter node the aetheria Gloas exporter-coverage steps read (ssvlabs/aetheria#181): it
+  # serves /v1/exporter/traces/validator + /v1/exporter/decideds for the Gloas duties (PTC_ATTESTER,
+  # PROPOSER_PREFERENCES, the two-root PROPOSER packet — ssvlabs/ssv#3045). Trace routes need an
+  # archive-mode node; a standard node serves decideds only. Singular by design — the aetheria side
+  # pins the hostname `ssv-exporter` — so this is a boolean, not a count.
+  exporter:
+    enabled: true
+
+# Service images default to the pins in constants.env. Override one per network with an images: block
+# (keys: ssv, anchor, monitor, redis, postgres, deployer), e.g. for a local `make prepare-anchor` build:
+# images:
+#   anchor: "node/anchor"

@@ -1,0 +1,71 @@
+# Boole fork test: genesis on Fulu, forks into Boole at epoch 3
+# Usage: make run PARAMS_FILE=params-boole.yaml
+
+network:
+  participants:
+  # el_image / cl_image default to constants.env's GETH_IMAGE / LIGHTHOUSE_IMAGE (main.star fills them in by
+  # client type); set them here to run a different build.
+  - el_type: geth
+    cl_type: lighthouse
+    validator_count: 32
+    count: 2
+    supernode: true
+
+  additional_services:
+    - dora
+
+  network_params:
+    network_id: "3151908"
+    deneb_fork_epoch: 0
+    electra_fork_epoch: 0
+    # Fulu stays at genesis so it always precedes the SSV Boole fork (the chain is born on Fulu, with
+    # no mid-run transition) and never falls inside the Boole measurement window. The BOOLE_FORK_EPOCH
+    # knob retunes only boole_epoch (below), so this ordering holds for any boole_epoch >= 1.
+    fulu_fork_epoch: 0
+    perfect_peerdas_enabled: false
+    preregistered_validator_count: 74
+
+  port_publisher:
+    cl:
+      enabled: true
+
+use_static_keys: true
+
+# pre_register_validators for the boole net. See params.yaml for the flag's full semantics and its
+# incompatibility with the executor's validator-registering suites. When enabled here, the deployer
+# bulk-registers the full static keyshare set at bring-up so the fleet runs SSV-managed validators
+# from genesis.
+pre_register_validators: false
+
+# pre_register_count partitions the pool (P = first N keyshares, D = the rest) when
+# pre_register_validators is true — see params.yaml for the full P⊎D semantics. Kept here so
+# `make run-boole PRE_REGISTER_COUNT=N` has a key to substitute (the Makefile fails on a missing key).
+# 0 registers the full set.
+pre_register_count: 0
+
+# ENABLED for the aetheria (boole) suite: it reads chain timing (genesis, seconds-per-slot,
+# slots-per-epoch) from the monitor's /api/environment (dora doesn't serve it) to anchor its
+# fork-relative windows. Needs a local image tagged `monitor` — build it via `make prepare-monitor`.
+monitor:
+  enabled: true
+
+# SSV Boole fork epoch (Alan → Boole). Retune without editing this file via
+# `make run-boole BOOLE_FORK_EPOCH=N`; the aetheria (boole) suite passes 8 for a comfortable
+# pre-fork Alan window (its dormancy + aggregator-format-switch steps need one).
+boole_epoch: 3
+
+nodes:
+  ssv:
+    count: 4
+  anchor:
+    count: 0
+  # Archive-exporter node the aetheria (boole) Step 12 reads to verify AGGREGATOR_COMMITTEE consensus.
+  # Boole-only (Step 12 is boole-specific); see main.star / node.star for how it's run. Singular by
+  # design — the aetheria side pins the hostname `ssv-exporter` — so this is a boolean, not a count.
+  exporter:
+    enabled: true
+
+# Service images default to the pins in constants.env. Override one per network with an images: block
+# (keys: ssv, anchor, monitor, redis, postgres, deployer), e.g. for a local `make prepare-anchor` build:
+# images:
+#   anchor: "node/anchor"

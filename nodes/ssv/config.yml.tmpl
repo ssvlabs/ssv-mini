@@ -14,12 +14,19 @@ p2p:
 ssv:
   Network: "{{ .Network }}"
   CustomNetwork:
+    Name: "{{ .NetworkName }}"
     DomainType: "{{ .DomainType }}"
+    NextDomainType: "{{ .NextDomainType }}"
     RegistrySyncOffset: "{{ .RegistrySyncOffset }}"
     RegistryContractAddr: "{{ .RegistryContractAddr }}"
     DiscoveryProtocolID: "{{ .DiscoveryProtocolID }}"
+    Forks:
+      GasLimit36: 0
+      Boole: {{ .BooleEpoch }}
+exporter:
+  Enabled: {{ .ExporterEnabled }}
+  Mode: "{{ .ExporterMode }}"
 OperatorPrivateKey: "{{ .OperatorPrivateKey }}"
 SSVAPIPort: {{ .SSVAPIPort }}
-Exporter: "{{ .Exporter }}"
 EnableTraces: {{ .EnableTraces }}
 MetricsAPIPort: {{ .MetricsAPIPort }}

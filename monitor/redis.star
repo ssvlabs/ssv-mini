@@ -4,12 +4,14 @@ def start(plan, image):
 
     plan.add_service(
         name=service_name,
+        description="Starting Redis for monitor",
         config=ServiceConfig(
             image=image,
             ports={
-                "http": PortSpec(
+                "redis": PortSpec(
                     number=port,
                     transport_protocol="TCP",
+                    application_protocol="redis",
                 )
             },
         ),
