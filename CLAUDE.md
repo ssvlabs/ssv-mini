@@ -57,6 +57,9 @@ Network configuration is controlled via `params.yaml`:
 - `pre_register_validators`: Bulk-register the full static keyshare set on-chain at bring-up under the deployer's owner (default: false; needed for per-validator fork-transition coverage, aetheria#141 A2). Registering the FULL set is incompatible with the executor's validator-registering suites (`(event)`/`(ptc)`/`(proposer)`/`(p2p)`) on the same enclave — both register the same pubkeys → `ValidatorAlreadyExists`. To share one enclave, partition the pool with `pre_register_count` below
 - `pre_register_count`: Split the pool when `pre_register_validators` is true — register only cohort P, the first N indices of the aetheria seed [`SSV_SEED_START_INDEX`, +`SSV_MANAGED_VALIDATOR_COUNT`) of `utils/constants.star`, and leave the rest for the executor to register as cohort D, so pre-registration and a validator-registering suite share one enclave (aetheria#176). 0 (default) registers the full set; a positive count must be < the pool size so D is non-empty. Only a CONTIGUOUS prefix is nonce-safe (the sharesData nonce sequence is 0-based; ssvlabs/ssv-mini#36). Bring-up publishes the actual N, the P/D pubkeys and the registration context (owner, operatorIds, SSVNetwork address) as the `pre-registered.json` enclave artifact (`kurtosis files download <enclave> pre-registered.json`), so the executor reads them instead of re-declaring them (ssvlabs/ssv-mini#53)
 - `unsafe_skip_validator_layout_guard`: Bypass main.star's validator-layout guard so a **standalone** base-chain liveness probe can run VCs past the seed start (Gloas devnet stall investigation, ssvlabs/ssv-mini#38). Default false. Safe **only** when nothing adopts the seed: `pre_register_validators: false` (true is rejected in code) and no executor validator-registering suite, or the extra VCs overlap the seed → double-sign → slashing. See `params-gloas.yaml` for the full contract
+- `use_recorded_txs`: Replay the pre-signed SSV deployment + operator (+ validator, with `pre_register_validators`) txs from `static/recorded/txs.json` instead of running hardhat and the ethers scripts live, then start the SSV nodes as soon as those events clear the 8-block follow distance (instead of the fixed block 16). Removes ~7 min of per-receipt waits. Static keys and the full keyshare set only, with a pool of at most 50 validators (one `register-validators.cjs` batch: later batches pass a block-number-dependent cluster snapshot that would revert on replay, so `record-txs.sh` refuses them). The recording isn't committed: `make run` records it first (`scripts/record-txs.sh --if-stale`: the same deployer image and scripts against anvil in a container, ~2 min) and re-records only when an input changes (deployer Dockerfile, registration scripts, static keys/keyshares, pinned addresses). Running `kurtosis run` directly with this flag needs `scripts/record-txs.sh` run first
+- `epoch_aligned_genesis` (requires `use_recorded_txs`): Put genesis in the past (negative ethereum-package `genesis_delay`) so the SSV nodes come up just before epoch 1 — an SSV node can't attest in epoch 0 (`attestation data source >= target`). Budget in `contract/recorded.star`
+- `params-fast.yaml`: both of the above plus pre-registration, no dora, no monitor — the quickest standalone e2e bring-up. It answers "does the cluster attest", it doesn't replace the default run: registrations always arrive through history sync (never live event sync), the nodes never see genesis or a full epoch 0, there's no dora or E2M, and aetheria's validator-registering suites revert on it (`ValidatorAlreadyExists`). Time a params file end to end with `scripts/bench-kurtosis.sh <params-file>`
 - `boole_epoch`: Boole fork activation epoch
 - `network.network_params.fulu_fork_epoch`: Fulu activation epoch (default 0 = at genesis; set a small epoch >0 to test the Electra→Fulu transition)
 - `monitor.enabled`: Enable monitoring stack
@@ -98,10 +101,21 @@ make reset PARAMS_FILE=params-gloas.yaml GLOAS_FORK_EPOCH=4 PRE_REGISTER_VALIDAT
 
 ### Key Dependencies
 
-- SSV nodes require EL at block 16+ (Event Syncer needs mature chain)
+- SSV nodes need their registry events 8+ blocks deep before starting (event syncer follow distance; a node with nothing to sync exits). Without `use_recorded_txs` this is the fixed wait for EL block 16
 - Contract deployment needs EL at block 1+
 - Static keys assume 4 operators and the aetheria seed [`SSV_SEED_START_INDEX`, +`SSV_MANAGED_VALIDATOR_COUNT`) of `utils/constants.star` ([64, 74) by default); scale with `SSV_VALIDATOR_COUNT=N ./scripts/generate-static-keys.sh` (regenerate the aetheria seed to the same N). Keep N < `CL_VALIDATOR_START`/2 so the SSV pool stays < 1/3 of the set; past that, raise `CL_VALIDATOR_START` and the params' `validator_count*count` with it
 - Changing operator/validator counts requires `use_static_keys: false` or `make generate-keys`
+
+## Hive Simulator (experimental)
+
+`hive/` runs the same devnet as a [hive](https://github.com/ethereum/hive) simulator: SSV nodes up ~15s after
+start (vs ~3 min with `params-fast.yaml`), pass/fail per test. Use it for repeatable e2e checks and scenarios
+(faults, restarts, mixed versions); use Kurtosis for a devnet you inspect by hand with scout, dora or e2m.
+How it works, writing tests and the comparison: `hive/README.md`.
+
+```bash
+SSV_IMAGE=node/ssv:my-branch hive/run.sh   # needs Go + Docker
+```
 
 ## Health Checks
 
